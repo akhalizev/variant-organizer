@@ -45,12 +45,16 @@ async function organizeVariants(): Promise<void> {
     return;
   }
 
-  // Create a parent frame to hold all variant frames
+  // Create a parent frame to hold all variant frames with fixed width
   const parentFrame: FrameNode = figma.createFrame();
   parentFrame.name = componentSet.name + ' Variants';
   parentFrame.layoutMode = 'VERTICAL';
   parentFrame.primaryAxisSizingMode = 'AUTO';
-  parentFrame.counterAxisSizingMode = 'AUTO';
+  
+  // Set a fixed width for the parent frame
+  parentFrame.counterAxisSizingMode = 'FIXED';
+  parentFrame.resize(600, parentFrame.height); // Set a fixed width of 600px
+  
   parentFrame.itemSpacing = 32;
   parentFrame.paddingLeft = 32;
   parentFrame.paddingRight = 32;
@@ -85,7 +89,12 @@ async function organizeVariants(): Promise<void> {
       .join(', ');
     containerFrame.layoutMode = 'VERTICAL';
     containerFrame.primaryAxisSizingMode = 'AUTO';
-    containerFrame.counterAxisSizingMode = 'AUTO';
+    
+    // Make the container frame fill the width of the parent
+    containerFrame.counterAxisSizingMode = 'FIXED';
+    containerFrame.counterAxisAlignItems = 'CENTER';
+    containerFrame.layoutAlign = 'STRETCH';
+    
     containerFrame.itemSpacing = 8;
     containerFrame.paddingLeft = 16;
     containerFrame.paddingRight = 16;
@@ -116,6 +125,9 @@ async function organizeVariants(): Promise<void> {
     variantFrame.layoutMode = 'HORIZONTAL';
     variantFrame.primaryAxisSizingMode = 'AUTO';
     variantFrame.counterAxisSizingMode = 'AUTO';
+    variantFrame.layoutAlign = 'STRETCH';
+    variantFrame.counterAxisAlignItems = 'CENTER';
+    variantFrame.primaryAxisAlignItems = 'CENTER';
     variantFrame.itemSpacing = 16;
     variantFrame.paddingLeft = 16;
     variantFrame.paddingRight = 16;
