@@ -87,6 +87,16 @@ async function organizeVariants(): Promise<void> {
     containerFrame.primaryAxisSizingMode = 'AUTO';
     containerFrame.counterAxisSizingMode = 'AUTO';
     containerFrame.itemSpacing = 8;
+    containerFrame.paddingLeft = 16;
+    containerFrame.paddingRight = 16;
+    containerFrame.paddingTop = 16;
+    containerFrame.paddingBottom = 16;
+    
+    // Add a border around the container frame
+    containerFrame.strokeWeight = 1;
+    containerFrame.strokeAlign = 'INSIDE';
+    containerFrame.strokes = [{ type: 'SOLID', color: { r: 0.5, g: 0.5, b: 0.5 } }]; // Medium gray color
+    containerFrame.cornerRadius = 4; // Slightly rounded corners
 
     // Create a text label
     const labelText: TextNode = figma.createText();
@@ -117,6 +127,7 @@ async function organizeVariants(): Promise<void> {
     variantFrame.strokeAlign = 'INSIDE';
     variantFrame.dashPattern = [4, 4]; // 4px dash, 4px gap
     variantFrame.strokes = [{ type: 'SOLID', color: { r: 0.7, g: 0.7, b: 0.7 } }]; // Light gray color
+    variantFrame.cornerRadius = 2; // Slightly rounded corners
 
     // Add variant instances to the variant frame
     for (const variant of group.variants) {
