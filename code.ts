@@ -98,9 +98,9 @@ async function organizeVariants(): Promise<void> {
     parentFrame.appendChild(frame);
   }
 
-  // Position the parent frame near the component set
-  parentFrame.x = componentSet.x + componentSet.width + 100;
-  parentFrame.y = componentSet.y;
+  // Position the parent frame to the right of the initially selected node instead of the component set
+  parentFrame.x = selectedNode.x + selectedNode.width + 100;
+  parentFrame.y = selectedNode.y;
 
   // Select and zoom to the parent frame
   figma.currentPage.selection = [parentFrame];
