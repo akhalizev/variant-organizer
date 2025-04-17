@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+    <html>
+      <head>
+        <style>
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            padding: 16px;
+            margin: 0;
+          }
+          button {
+            background-color: #18a0fb;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            width: 100%;
+            font-size: 14px;
+          }
+          button:hover {
+            background-color: #0d8bec;
+          }
+          p {
+            font-size: 14px;
+            color: #333;
+            margin-bottom: 16px;
+          }
+        </style>
+      </head>
+      <body>
+        <p>Select a Component or Instance in Figma, then click the button below to organize all variants of its Component Set into labeled frames.</p>
+        <button id="organize">Organize Variants</button>
+        <script>
+          document.getElementById('organize').onclick = () => {
+            parent.postMessage({ pluginMessage: { type: 'organize-variants' } }, '*');
+          };
+        </script>
+      </body>
+    </html>
