@@ -107,6 +107,16 @@ async function organizeVariants(): Promise<void> {
     variantFrame.primaryAxisSizingMode = 'AUTO';
     variantFrame.counterAxisSizingMode = 'AUTO';
     variantFrame.itemSpacing = 16;
+    variantFrame.paddingLeft = 16;
+    variantFrame.paddingRight = 16;
+    variantFrame.paddingTop = 16;
+    variantFrame.paddingBottom = 16;
+    
+    // Add dashed border to the variant frame
+    variantFrame.strokeWeight = 1;
+    variantFrame.strokeAlign = 'INSIDE';
+    variantFrame.dashPattern = [4, 4]; // 4px dash, 4px gap
+    variantFrame.strokes = [{ type: 'SOLID', color: { r: 0.7, g: 0.7, b: 0.7 } }]; // Light gray color
 
     // Add variant instances to the variant frame
     for (const variant of group.variants) {
