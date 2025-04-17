@@ -77,25 +77,48 @@ async function organizeVariants(): Promise<void> {
   for (const groupKey in variantGroups) {
     const group: VariantGroup = variantGroups[groupKey];
     const properties: { [key: string]: string } = group.properties;
-
-    // Create a frame for this group
-    const frame: FrameNode = figma.createFrame();
-    frame.name = Object.keys(properties)
+    
+    // Create a container frame that will hold both the label and the variants
+    const containerFrame: FrameNode = figma.createFrame();
+    containerFrame.name = Object.keys(properties)
       .map((key: string) => key + ': ' + properties[key])
       .join(', ');
-    frame.layoutMode = 'HORIZONTAL';
-    frame.primaryAxisSizingMode = 'AUTO';
-    frame.counterAxisSizingMode = 'AUTO';
-    frame.itemSpacing = 16;
+    containerFrame.layoutMode = 'VERTICAL';
+    containerFrame.primaryAxisSizingMode = 'AUTO';
+    containerFrame.counterAxisSizingMode = 'AUTO';
+    containerFrame.itemSpacing = 8;
 
-    // Add variant instances to the frame
+    // Create a text label
+    const labelText: TextNode = figma.createText();
+    await figma.loadFontAsync({ family: "Inter", style: "Medium" });
+    labelText.fontName = { family: "Inter", style: "Medium" };
+    labelText.fontSize = 12;
+    labelText.characters = Object.keys(properties)
+      .map((key: string) => `${key}: ${properties[key]}`)
+      .join(', ');
+    
+    // Add the label to the container
+    containerFrame.appendChild(labelText);
+    
+    // Create a frame for the variants
+    const variantFrame: FrameNode = figma.createFrame();
+    variantFrame.name = "Variants";
+    variantFrame.layoutMode = 'HORIZONTAL';
+    variantFrame.primaryAxisSizingMode = 'AUTO';
+    variantFrame.counterAxisSizingMode = 'AUTO';
+    variantFrame.itemSpacing = 16;
+
+    // Add variant instances to the variant frame
     for (const variant of group.variants) {
       const instance: InstanceNode = variant.createInstance();
-      frame.appendChild(instance);
+      variantFrame.appendChild(instance);
     }
 
-    // Append the frame to the parent frame
-    parentFrame.appendChild(frame);
+    // Add the variant frame to the container frame
+    containerFrame.appendChild(variantFrame);
+
+    // Append the container frame to the parent frame
+    parentFrame.appendChild(containerFrame);
   }
 
   // Position the parent frame to the right of the initially selected node instead of the component set
