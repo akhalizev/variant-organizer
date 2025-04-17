@@ -45,26 +45,19 @@ async function organizeVariants(): Promise<void> {
     return;
   }
 
-  // Create a parent frame to hold all variant frames with fixed width
-  const parentFrame: FrameNode = figma.createFrame();
-  parentFrame.name = componentSet.name + ' Variants';
-  parentFrame.layoutMode = 'VERTICAL';
-  parentFrame.primaryAxisSizingMode = 'AUTO';
+  // Find the widest variant component
+  let maxVariantWidth = 0;
+  for (const variant of variants) {
+    if (variant.width > maxVariantWidth) {
+      maxVariantWidth = variant.width;
+    }
+  }
   
-  // Set a fixed width for the parent frame
-  parentFrame.counterAxisSizingMode = 'FIXED';
-  parentFrame.resize(600, parentFrame.height); // Set a fixed width of 600px
-  
-  parentFrame.itemSpacing = 32;
-  parentFrame.paddingLeft = 32;
-  parentFrame.paddingRight = 32;
-  parentFrame.paddingTop = 32;
-  parentFrame.paddingBottom = 32;
-
   // Group variants by their properties for organized framing
   interface VariantGroup {
     properties: { [key: string]: string };
     variants: ComponentNode[];
+    labelWidth?: number; // Add labelWidth property to store the calculated text width
   }
 
   const variantGroups: { [key: string]: VariantGroup } = {};
@@ -76,6 +69,59 @@ async function organizeVariants(): Promise<void> {
     }
     variantGroups[groupKey].variants.push(variant);
   }
+
+  // Calculate text widths for all property labels
+  await figma.loadFontAsync({ family: "Inter", style: "Medium" });
+  let maxLabelWidth = 0;
+  
+  for (const groupKey in variantGroups) {
+    const group = variantGroups[groupKey];
+    const properties = group.properties;
+    const labelText = Object.keys(properties)
+      .map((key: string) => `${key}: ${properties[key]}`)
+      .join(', ');
+      
+    // Create a temporary text node to calculate width
+    const tempText = figma.createText();
+    tempText.fontName = { family: "Inter", style: "Medium" };
+    tempText.fontSize = 12;
+    tempText.characters = labelText;
+    
+    // Store the width in the group object
+    group.labelWidth = tempText.width;
+    if (tempText.width > maxLabelWidth) {
+      maxLabelWidth = tempText.width;
+    }
+    
+    // Remove the temporary text node
+    tempText.remove();
+  }
+
+  // Calculate how many variants can fit horizontally (for the widest group)
+  const maxVariantsInRow = Math.max(...Object.values(variantGroups).map(group => group.variants.length));
+  
+  // Calculate total width needed for variants
+  const variantsWidth = (maxVariantWidth * maxVariantsInRow) + (16 * (maxVariantsInRow - 1));
+  
+  // Use the max of either the variants width or the max label width, plus padding
+  const contentWidth = Math.max(variantsWidth, maxLabelWidth);
+  const totalWidth = contentWidth + (16 * 2) + (32 * 2); // Add padding for variant frame and parent frame
+
+  // Create a parent frame to hold all variant frames
+  const parentFrame: FrameNode = figma.createFrame();
+  parentFrame.name = componentSet.name + ' Variants';
+  parentFrame.layoutMode = 'VERTICAL';
+  parentFrame.primaryAxisSizingMode = 'AUTO';
+  
+  // Set the calculated width for the parent frame
+  parentFrame.counterAxisSizingMode = 'FIXED';
+  parentFrame.resize(totalWidth, parentFrame.height);
+  
+  parentFrame.itemSpacing = 32;
+  parentFrame.paddingLeft = 32;
+  parentFrame.paddingRight = 32;
+  parentFrame.paddingTop = 32;
+  parentFrame.paddingBottom = 32;
 
   // Create a frame for each group of variants
   for (const groupKey in variantGroups) {
