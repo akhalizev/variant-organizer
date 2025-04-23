@@ -98,7 +98,7 @@ async function organizeVariants(): Promise<void> {
   }
 
   // Calculate how many variants can fit horizontally (for the widest group)
-  const maxVariantsInRow = Math.max(...Object.values(variantGroups).map(group => group.variants.length));
+  const maxVariantsInRow = Math.max(0, ...Object.keys(variantGroups).map(key => variantGroups[key].variants.length)); // Use Object.keys for broader compatibility, ensure Math.max gets at least 0
   
   // Calculate total width needed for variants
   const variantsWidth = (maxVariantWidth * maxVariantsInRow) + (16 * (maxVariantsInRow - 1));
