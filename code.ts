@@ -23,6 +23,20 @@ async function ensureFontLoaded() {
   }
 }
 
+// Utility: detect if a string implies an "On dark" context
+function isOnDarkString(s?: string): boolean {
+  if (!s) return false;
+  return /on\s*dark/i.test(s) || /^dark$/i.test(s.trim());
+}
+
+// Utility: detect if any property key or value in the map denotes an "On dark" context
+function isOnDarkProps(map: { [k: string]: string | undefined }): boolean {
+  for (const k of Object.keys(map)) {
+    if (isOnDarkString(k) || isOnDarkString(map[k])) return true;
+  }
+  return false;
+}
+
 async function organizeVariants(): Promise<void> {
   // Determine the component set from selection
   const selection: ReadonlyArray<SceneNode> = figma.currentPage.selection;
@@ -186,6 +200,14 @@ async function organizeVariants(): Promise<void> {
     groupFrame.strokes = [{ type: 'SOLID', color: { r: 0.85, g: 0.85, b: 0.85 } }];
     groupFrame.cornerRadius = 6;
 
+    // Detect dark context for this group
+    const groupIsDark = isOnDarkProps(fixedProps);
+    if (groupIsDark) {
+      groupFrame.fills = [{ type: 'SOLID', color: { r: 0.09, g: 0.09, b: 0.11 } }]; // near-black background
+    } else {
+      groupFrame.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
+    }
+
     if (groupName) {
       const label = figma.createText();
       try {
@@ -193,6 +215,9 @@ async function organizeVariants(): Promise<void> {
       } catch {}
       label.fontSize = 12;
       label.characters = groupName;
+      if (groupIsDark) {
+        label.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
+      }
       groupFrame.appendChild(label);
     }
 
@@ -223,6 +248,9 @@ async function organizeVariants(): Promise<void> {
       } catch {}
       t.fontSize = 12;
       t.characters = colProp ? `${colProp}: ${cv}` : '';
+      if (groupIsDark || isOnDarkString(cv)) {
+        t.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
+      }
       cell.appendChild(t);
       header.appendChild(cell);
     }
@@ -248,6 +276,9 @@ async function organizeVariants(): Promise<void> {
       } catch {}
       t.fontSize = 12;
       t.characters = rowProp ? `${rowProp}: ${rv}` : '';
+      if (groupIsDark || isOnDarkString(rv)) {
+        t.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
+      }
       rowLabel.appendChild(t);
       row.appendChild(rowLabel);
 
@@ -267,7 +298,13 @@ async function organizeVariants(): Promise<void> {
         cell.resize(cellWidth, cell.height);
         cell.strokeWeight = 1;
         cell.strokeAlign = 'INSIDE';
-        cell.strokes = [{ type: 'SOLID', color: { r: 0.95, g: 0.95, b: 0.95 } }];
+        if (groupIsDark || isOnDarkString(rv) || isOnDarkString(cv)) {
+          cell.strokes = [{ type: 'SOLID', color: { r: 0.3, g: 0.3, b: 0.35 } }];
+          cell.fills = [{ type: 'SOLID', color: { r: 0.15, g: 0.15, b: 0.18 } }];
+        } else {
+          cell.strokes = [{ type: 'SOLID', color: { r: 0.95, g: 0.95, b: 0.95 } }];
+          cell.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
+        }
         cell.cornerRadius = 4;
 
         const fullProps: { [k: string]: string } = {};
@@ -284,8 +321,13 @@ async function organizeVariants(): Promise<void> {
           // Placeholder for missing combination
           const rect = figma.createRectangle();
           rect.resize(maxVariantWidth || 48, maxVariantHeight || 48);
-          rect.fills = [];
-          rect.strokes = [{ type: 'SOLID', color: { r: 1, g: 0.4, b: 0.4 } }];
+          if (groupIsDark || isOnDarkString(rv) || isOnDarkString(cv)) {
+            rect.fills = [];
+            rect.strokes = [{ type: 'SOLID', color: { r: 1, g: 0.6, b: 0.6 } }];
+          } else {
+            rect.fills = [];
+            rect.strokes = [{ type: 'SOLID', color: { r: 1, g: 0.4, b: 0.4 } }];
+          }
           rect.strokeWeight = 1;
           rect.dashPattern = [4, 4];
           rect.name = 'Missing';
