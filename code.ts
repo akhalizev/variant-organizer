@@ -8,205 +8,306 @@ figma.ui.onmessage = async (msg: { type: string }) => {
   }
 };
 
+// Utility: stable key from properties in a fixed order
+function keyFor(props: { [k: string]: string | undefined }, names: string[]): string {
+  return names.map((n) => `${n}=${props[n] ?? ''}`).join('|');
+}
+
+// Utility: safe font load
+async function ensureFontLoaded() {
+  try {
+    await figma.loadFontAsync({ family: 'Inter', style: 'Medium' });
+  } catch (_err) {
+    // Fallback to default font if Inter isn't available
+    // Intentionally swallow error so we still render frames
+  }
+}
+
 async function organizeVariants(): Promise<void> {
-  // Get the selected node
+  // Determine the component set from selection
   const selection: ReadonlyArray<SceneNode> = figma.currentPage.selection;
-  
-  if (selection.length !== 1 || (selection[0].type !== 'COMPONENT' && selection[0].type !== 'INSTANCE')) {
-    figma.notify('Please select a single Component or Instance.');
+  if (
+    selection.length !== 1 ||
+    (selection[0].type !== 'COMPONENT' && selection[0].type !== 'INSTANCE' && selection[0].type !== 'COMPONENT_SET')
+  ) {
+    figma.notify('Select a single Component, Instance, or Component Set.');
     return;
   }
 
-  const selectedNode: ComponentNode | InstanceNode = selection[0] as ComponentNode | InstanceNode;
+  const selected = selection[0];
   let componentSet: ComponentSetNode | null = null;
 
-  // Find the parent component set
-  if (selectedNode.type === 'COMPONENT') {
-    if (selectedNode.parent && selectedNode.parent.type === 'COMPONENT_SET') {
-      componentSet = selectedNode.parent as ComponentSetNode;
+  if (selected.type === 'COMPONENT_SET') {
+    componentSet = selected as ComponentSetNode;
+  } else if (selected.type === 'COMPONENT') {
+    if (selected.parent && selected.parent.type === 'COMPONENT_SET') {
+      componentSet = selected.parent as ComponentSetNode;
     }
-  } else if (selectedNode.type === 'INSTANCE') {
-    // Use getMainComponentAsync instead of mainComponent property
-    const mainComponent = await selectedNode.getMainComponentAsync();
+  } else if (selected.type === 'INSTANCE') {
+    const mainComponent = await selected.getMainComponentAsync();
     if (mainComponent && mainComponent.parent && mainComponent.parent.type === 'COMPONENT_SET') {
       componentSet = mainComponent.parent as ComponentSetNode;
     }
   }
 
   if (!componentSet) {
-    figma.notify('Selected component is not part of a Component Set.');
+    figma.notify('Selected node is not part of a Component Set.');
     return;
   }
 
-  const variants: ReadonlyArray<ComponentNode> = componentSet.children as ReadonlyArray<ComponentNode>;
-
+  const variants = (componentSet.children.filter((c) => c.type === 'COMPONENT') as ComponentNode[]) || [];
   if (variants.length === 0) {
     figma.notify('No variants found in the Component Set.');
     return;
   }
 
-  // Find the widest variant component
+  // Collect property names and values
+  const nameSet = new Set<string>();
   let maxVariantWidth = 0;
-  for (const variant of variants) {
-    if (variant.width > maxVariantWidth) {
-      maxVariantWidth = variant.width;
+  let maxVariantHeight = 0;
+  for (const v of variants) {
+    const vp = v.variantProperties ?? {};
+    Object.keys(vp).forEach((k) => nameSet.add(k));
+    if (v.width > maxVariantWidth) maxVariantWidth = v.width;
+    if (v.height > maxVariantHeight) maxVariantHeight = v.height;
+  }
+  const propNames = Array.from(nameSet);
+
+  // Map of property -> possible values (sorted)
+  const propertyValues: { [k: string]: string[] } = {};
+  // Try using variantGroupProperties if available (shape can vary across typings)
+  const vgp: any = (componentSet as any).variantGroupProperties;
+  if (vgp && typeof vgp === 'object') {
+    for (const k of Object.keys(vgp)) {
+      let values: string[] | undefined;
+      if (Array.isArray(vgp[k])) values = vgp[k] as string[];
+      else if (vgp[k] && Array.isArray(vgp[k].values)) values = vgp[k].values as string[];
+      if (values) propertyValues[k] = [...values].sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
     }
   }
-  
-  // Group variants by their properties for organized framing
-  interface VariantGroup {
-    properties: { [key: string]: string };
-    variants: ComponentNode[];
-    labelWidth?: number; // Add labelWidth property to store the calculated text width
-  }
-
-  const variantGroups: { [key: string]: VariantGroup } = {};
-  for (const variant of variants) {
-    const properties: { [key: string]: string } = variant.variantProperties ?? {};
-    const groupKey: string = JSON.stringify(properties); // Unique key for each property combo
-    if (!variantGroups[groupKey]) {
-      variantGroups[groupKey] = { properties, variants: [] };
+  // Fill missing or fallback from actual variants
+  for (const k of propNames) {
+    if (!propertyValues[k]) {
+      const vals = new Set<string>();
+      for (const v of variants) {
+        const val = (v.variantProperties ?? {})[k];
+        if (val) vals.add(val);
+      }
+      propertyValues[k] = Array.from(vals).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
     }
-    variantGroups[groupKey].variants.push(variant);
   }
 
-  // Calculate text widths for all property labels
-  await figma.loadFontAsync({ family: "Inter", style: "Medium" });
-  let maxLabelWidth = 0;
-  
-  for (const groupKey in variantGroups) {
-    const group = variantGroups[groupKey];
-    const properties = group.properties;
-    const labelText = Object.keys(properties)
-      .map((key: string) => `${key}: ${properties[key]}`)
-      .join(', ');
-      
-    // Create a temporary text node to calculate width
-    const tempText = figma.createText();
-    tempText.fontName = { family: "Inter", style: "Medium" };
-    tempText.fontSize = 12;
-    tempText.characters = labelText;
-    
-    // Store the width in the group object
-    group.labelWidth = tempText.width;
-    if (tempText.width > maxLabelWidth) {
-      maxLabelWidth = tempText.width;
-    }
-    
-    // Remove the temporary text node
-    tempText.remove();
+  // Build quick lookup from full props -> ComponentNode
+  const lookup = new Map<string, ComponentNode>();
+  for (const v of variants) {
+    const vp = v.variantProperties ?? {};
+    lookup.set(keyFor(vp, propNames), v);
   }
 
-  // Calculate how many variants can fit horizontally (for the widest group)
-  const maxVariantsInRow = Math.max(0, ...Object.keys(variantGroups).map(key => variantGroups[key].variants.length)); // Use Object.keys for broader compatibility, ensure Math.max gets at least 0
-  
-  // Calculate total width needed for variants
-  const variantsWidth = (maxVariantWidth * maxVariantsInRow) + (16 * (maxVariantsInRow - 1));
-  
-  // Use the max of either the variants width or the max label width, plus padding
-  const contentWidth = Math.max(variantsWidth, maxLabelWidth);
-  const totalWidth = contentWidth + (16 * 2) + (32 * 2); // Add padding for variant frame and parent frame
+  await ensureFontLoaded();
 
-  // Create a parent frame to hold all variant frames
-  const parentFrame: FrameNode = figma.createFrame();
-  parentFrame.name = componentSet.name + ' Variants';
+  // Parent container
+  const parentFrame = figma.createFrame();
+  parentFrame.name = `${componentSet.name} • Variants Table`;
   parentFrame.layoutMode = 'VERTICAL';
   parentFrame.primaryAxisSizingMode = 'AUTO';
-  
-  // Set the calculated width for the parent frame
-  parentFrame.counterAxisSizingMode = 'FIXED';
-  parentFrame.resize(totalWidth, parentFrame.height);
-  
-  parentFrame.itemSpacing = 32;
+  parentFrame.counterAxisSizingMode = 'AUTO';
+  parentFrame.itemSpacing = 24;
   parentFrame.paddingLeft = 32;
   parentFrame.paddingRight = 32;
   parentFrame.paddingTop = 32;
   parentFrame.paddingBottom = 32;
 
-  // Create a frame for each group of variants
-  for (const groupKey in variantGroups) {
-    const group: VariantGroup = variantGroups[groupKey];
-    const properties: { [key: string]: string } = group.properties;
-    
-    // Create a container frame that will hold both the label and the variants
-    const containerFrame: FrameNode = figma.createFrame();
-    containerFrame.name = Object.keys(properties)
-      .map((key: string) => key + ': ' + properties[key])
-      .join(', ');
-    containerFrame.layoutMode = 'VERTICAL';
-    containerFrame.primaryAxisSizingMode = 'AUTO';
-    
-    // Make the container frame fill the width of the parent
-    containerFrame.counterAxisSizingMode = 'FIXED';
-    containerFrame.counterAxisAlignItems = 'CENTER';
-    containerFrame.layoutAlign = 'STRETCH';
-    
-    containerFrame.itemSpacing = 8;
-    containerFrame.paddingLeft = 16;
-    containerFrame.paddingRight = 16;
-    containerFrame.paddingTop = 16;
-    containerFrame.paddingBottom = 16;
-    
-    // Add a border around the container frame
-    containerFrame.strokeWeight = 1;
-    containerFrame.strokeAlign = 'INSIDE';
-    containerFrame.strokes = [{ type: 'SOLID', color: { r: 0.5, g: 0.5, b: 0.5 } }]; // Medium gray color
-    containerFrame.cornerRadius = 4; // Slightly rounded corners
+  // Title
+  const title = figma.createText();
+  try {
+    title.fontName = { family: 'Inter', style: 'Medium' };
+  } catch {}
+  title.fontSize = 14;
+  title.characters = `${componentSet.name}`;
+  parentFrame.appendChild(title);
 
-    // Create a text label
-    const labelText: TextNode = figma.createText();
-    await figma.loadFontAsync({ family: "Inter", style: "Medium" });
-    labelText.fontName = { family: "Inter", style: "Medium" };
-    labelText.fontSize = 12;
-    labelText.characters = Object.keys(properties)
-      .map((key: string) => `${key}: ${properties[key]}`)
-      .join(', ');
-    
-    // Add the label to the container
-    containerFrame.appendChild(labelText);
-    
-    // Create a frame for the variants
-    const variantFrame: FrameNode = figma.createFrame();
-    variantFrame.name = "Variants";
-    variantFrame.layoutMode = 'HORIZONTAL';
-    variantFrame.primaryAxisSizingMode = 'AUTO';
-    variantFrame.counterAxisSizingMode = 'AUTO';
-    variantFrame.layoutAlign = 'STRETCH';
-    variantFrame.counterAxisAlignItems = 'CENTER';
-    variantFrame.primaryAxisAlignItems = 'CENTER';
-    variantFrame.itemSpacing = 16;
-    variantFrame.paddingLeft = 16;
-    variantFrame.paddingRight = 16;
-    variantFrame.paddingTop = 16;
-    variantFrame.paddingBottom = 16;
-    
-    // Add dashed border to the variant frame
-    variantFrame.strokeWeight = 1;
-    variantFrame.strokeAlign = 'INSIDE';
-    variantFrame.dashPattern = [4, 4]; // 4px dash, 4px gap
-    variantFrame.strokes = [{ type: 'SOLID', color: { r: 0.7, g: 0.7, b: 0.7 } }]; // Light gray color
-    variantFrame.cornerRadius = 2; // Slightly rounded corners
+  // Decide axes
+  const rowProp = propNames[0];
+  const colProp = propNames[1];
+  const otherProps = propNames.slice(2);
 
-    // Add variant instances to the variant frame
-    for (const variant of group.variants) {
-      const instance: InstanceNode = variant.createInstance();
-      variantFrame.appendChild(instance);
+  // For grouping when >2 props: create groups for each distinct combination of remaining properties from actual variants
+  type PropMap = { [k: string]: string };
+  const groupKeyNames = otherProps;
+  const groupCombos = new Map<string, PropMap>();
+  if (groupKeyNames.length === 0) {
+    groupCombos.set('', {});
+  } else {
+    for (const v of variants) {
+      const vp = v.variantProperties ?? {};
+      const obj: PropMap = {};
+      for (const k of groupKeyNames) obj[k] = vp[k];
+      const k = keyFor(obj, groupKeyNames);
+      if (!groupCombos.has(k)) groupCombos.set(k, obj);
     }
-
-    // Add the variant frame to the container frame
-    containerFrame.appendChild(variantFrame);
-
-    // Append the container frame to the parent frame
-    parentFrame.appendChild(containerFrame);
   }
 
-  // Position the parent frame to the right of the initially selected node instead of the component set
-  parentFrame.x = selectedNode.x + selectedNode.width + 100;
-  parentFrame.y = selectedNode.y;
+  // Measure row label width to align cells
+  const rowValues = rowProp ? propertyValues[rowProp] : [''];
+  let rowLabelWidth = 0;
+  for (const rv of rowValues) {
+    const t = figma.createText();
+    try {
+      t.fontName = { family: 'Inter', style: 'Medium' };
+    } catch {}
+    t.fontSize = 12;
+    t.characters = rowProp ? `${rowProp}: ${rv}` : '';
+    rowLabelWidth = Math.max(rowLabelWidth, t.width);
+    t.remove();
+  }
+  rowLabelWidth = Math.ceil(rowLabelWidth) + 8; // small padding
 
-  // Select and zoom to the parent frame
+  const cellWidth = Math.ceil(maxVariantWidth) + 16; // add some padding per cell
+
+  // Create grids per group
+  for (const [, fixedProps] of groupCombos) {
+    const groupFrame = figma.createFrame();
+    const groupName = groupKeyNames
+      .map((k) => `${k}: ${fixedProps[k]}`)
+      .filter(Boolean)
+      .join(', ');
+    groupFrame.name = groupName || 'All Variants';
+    groupFrame.layoutMode = 'VERTICAL';
+    groupFrame.primaryAxisSizingMode = 'AUTO';
+    groupFrame.counterAxisSizingMode = 'AUTO';
+    groupFrame.itemSpacing = 8;
+    groupFrame.paddingLeft = 12;
+    groupFrame.paddingRight = 12;
+    groupFrame.paddingTop = 12;
+    groupFrame.paddingBottom = 12;
+    groupFrame.strokeWeight = 1;
+    groupFrame.strokeAlign = 'INSIDE';
+    groupFrame.strokes = [{ type: 'SOLID', color: { r: 0.85, g: 0.85, b: 0.85 } }];
+    groupFrame.cornerRadius = 6;
+
+    if (groupName) {
+      const label = figma.createText();
+      try {
+        label.fontName = { family: 'Inter', style: 'Medium' };
+      } catch {}
+      label.fontSize = 12;
+      label.characters = groupName;
+      groupFrame.appendChild(label);
+    }
+
+    // Header row: empty spacer + column labels
+    const header = figma.createFrame();
+    header.layoutMode = 'HORIZONTAL';
+    header.primaryAxisSizingMode = 'AUTO';
+    header.counterAxisSizingMode = 'AUTO';
+    header.itemSpacing = 8;
+
+    const spacer = figma.createFrame();
+    spacer.layoutMode = 'HORIZONTAL';
+    spacer.primaryAxisSizingMode = 'AUTO';
+    spacer.counterAxisSizingMode = 'FIXED';
+    spacer.resize(rowLabelWidth, spacer.height);
+    header.appendChild(spacer);
+
+    const colValues = colProp ? propertyValues[colProp] : [''];
+    for (const cv of colValues) {
+      const cell = figma.createFrame();
+      cell.layoutMode = 'HORIZONTAL';
+      cell.primaryAxisSizingMode = 'AUTO';
+      cell.counterAxisSizingMode = 'FIXED';
+      cell.resize(cellWidth, cell.height);
+      const t = figma.createText();
+      try {
+        t.fontName = { family: 'Inter', style: 'Medium' };
+      } catch {}
+      t.fontSize = 12;
+      t.characters = colProp ? `${colProp}: ${cv}` : '';
+      cell.appendChild(t);
+      header.appendChild(cell);
+    }
+    groupFrame.appendChild(header);
+
+    // Rows
+    for (const rv of rowValues) {
+      const row = figma.createFrame();
+      row.layoutMode = 'HORIZONTAL';
+      row.primaryAxisSizingMode = 'AUTO';
+      row.counterAxisSizingMode = 'AUTO';
+      row.itemSpacing = 8;
+
+      // Row label
+      const rowLabel = figma.createFrame();
+      rowLabel.layoutMode = 'HORIZONTAL';
+      rowLabel.primaryAxisSizingMode = 'AUTO';
+      rowLabel.counterAxisSizingMode = 'FIXED';
+      rowLabel.resize(rowLabelWidth, rowLabel.height);
+      const t = figma.createText();
+      try {
+        t.fontName = { family: 'Inter', style: 'Medium' };
+      } catch {}
+      t.fontSize = 12;
+      t.characters = rowProp ? `${rowProp}: ${rv}` : '';
+      rowLabel.appendChild(t);
+      row.appendChild(rowLabel);
+
+      // Cells
+      for (const cv of colValues) {
+        const cell = figma.createFrame();
+        cell.layoutMode = 'HORIZONTAL';
+        cell.primaryAxisSizingMode = 'AUTO';
+        cell.counterAxisSizingMode = 'FIXED';
+        cell.counterAxisAlignItems = 'CENTER';
+        cell.primaryAxisAlignItems = 'CENTER';
+        cell.paddingLeft = 8;
+        cell.paddingRight = 8;
+        cell.paddingTop = 8;
+        cell.paddingBottom = 8;
+        cell.itemSpacing = 0;
+        cell.resize(cellWidth, cell.height);
+        cell.strokeWeight = 1;
+        cell.strokeAlign = 'INSIDE';
+        cell.strokes = [{ type: 'SOLID', color: { r: 0.95, g: 0.95, b: 0.95 } }];
+        cell.cornerRadius = 4;
+
+        const fullProps: { [k: string]: string } = {};
+        for (const n of propNames) {
+          if (n === rowProp) fullProps[n] = rv;
+          else if (n === colProp) fullProps[n] = cv;
+          else if (n in fixedProps) fullProps[n] = fixedProps[n];
+        }
+        const comp = lookup.get(keyFor(fullProps, propNames));
+        if (comp) {
+          const instance = comp.createInstance();
+          cell.appendChild(instance);
+        } else {
+          // Placeholder for missing combination
+          const rect = figma.createRectangle();
+          rect.resize(maxVariantWidth || 48, maxVariantHeight || 48);
+          rect.fills = [];
+          rect.strokes = [{ type: 'SOLID', color: { r: 1, g: 0.4, b: 0.4 } }];
+          rect.strokeWeight = 1;
+          rect.dashPattern = [4, 4];
+          rect.name = 'Missing';
+          cell.appendChild(rect);
+        }
+
+        row.appendChild(cell);
+      }
+
+      groupFrame.appendChild(row);
+    }
+
+    parentFrame.appendChild(groupFrame);
+  }
+
+  // Position the parent frame near selection
+  parentFrame.x = selected.x + (selected as any).width + 100;
+  parentFrame.y = (selected as any).y;
+
+  // Select and zoom
   figma.currentPage.selection = [parentFrame];
   figma.viewport.scrollAndZoomIntoView([parentFrame]);
 
-  figma.notify('Variants organized into frames successfully!');
+  figma.notify(`Rendered ${variants.length} variants across ${propNames.length} properties.`);
 }
