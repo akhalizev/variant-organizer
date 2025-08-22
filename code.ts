@@ -37,6 +37,67 @@ function isOnDarkProps(map: { [k: string]: string | undefined }): boolean {
   return false;
 }
 
+// Utilities for state ordering
+const STATE_ORDER: { [k: string]: number } = { default: 0, hover: 1, focus: 2, disabled: 3 };
+const STATE_PROP_HINTS = new Set<string>(['state', 'interaction', 'status', 'behavior', 'behaviour', 'pseudo', 'ui state', 'mode']);
+const STATE_ALIASES: { [canonical: string]: string[] } = {
+  default: ['default', 'base', 'rest', 'enabled', 'normal'],
+  hover: ['hover', 'hovered'],
+  focus: ['focus', 'focused', 'focus-visible', 'focusvisible'],
+  disabled: ['disabled', 'inactive', 'not-enabled', 'notenabled']
+};
+
+function normalizeToken(s?: string): string {
+  if (!s) return '';
+  let t = s.trim().toLowerCase();
+  // strip a leading ':' and extra spaces
+  if (t.startsWith(':')) t = t.slice(1);
+  return t.replace(/\s+/g, ' ');
+}
+
+function getStateRank(s?: string): number {
+  if (!s) return Number.POSITIVE_INFINITY;
+  const cleaned = s.trim().toLowerCase().replace(/^:/, '');
+  const tokens = cleaned.split(/[^a-z0-9]+/).filter(Boolean);
+
+  // direct canonical
+  if (cleaned in STATE_ORDER) return STATE_ORDER[cleaned];
+
+  // alias match by token
+  for (const canonical of Object.keys(STATE_ALIASES)) {
+    const aliases = STATE_ALIASES[canonical];
+    for (const alias of aliases) {
+  if (tokens.indexOf(alias) !== -1) return STATE_ORDER[canonical];
+    }
+  }
+  return Number.POSITIVE_INFINITY;
+}
+
+function isStateValueToken(s?: string): boolean {
+  return getStateRank(s) !== Number.POSITIVE_INFINITY;
+}
+
+function looksLikeStateProperty(propName: string, values: string[]): boolean {
+  const pn = normalizeToken(propName);
+  if (STATE_PROP_HINTS.has(pn)) return true;
+  return values.some((v) => isStateValueToken(v));
+}
+
+function sortPropertyValues(propName: string, values: string[]): string[] {
+  const applyStateOrder = looksLikeStateProperty(propName, values);
+  const withIndex = values.map((v, i) => ({ v, i }));
+  withIndex.sort((a, b) => {
+    if (applyStateOrder) {
+  const sa = getStateRank(a.v);
+  const sb = getStateRank(b.v);
+      if (sa !== sb) return sa - sb;
+    }
+    // Fallback to natural alpha-numeric order
+    return a.v.localeCompare(b.v, undefined, { numeric: true, sensitivity: 'base' });
+  });
+  return withIndex.map((x) => x.v);
+}
+
 async function organizeVariants(): Promise<void> {
   // Determine the component set from selection
   const selection: ReadonlyArray<SceneNode> = figma.currentPage.selection;
@@ -85,7 +146,7 @@ async function organizeVariants(): Promise<void> {
     if (v.width > maxVariantWidth) maxVariantWidth = v.width;
     if (v.height > maxVariantHeight) maxVariantHeight = v.height;
   }
-  const propNames = Array.from(nameSet);
+  const allPropNames = Array.from(nameSet);
 
   // Map of property -> possible values (sorted)
   const propertyValues: { [k: string]: string[] } = {};
@@ -96,26 +157,36 @@ async function organizeVariants(): Promise<void> {
       let values: string[] | undefined;
       if (Array.isArray(vgp[k])) values = vgp[k] as string[];
       else if (vgp[k] && Array.isArray(vgp[k].values)) values = vgp[k].values as string[];
-      if (values) propertyValues[k] = [...values].sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+  if (values) propertyValues[k] = sortPropertyValues(k, [...values]);
     }
   }
   // Fill missing or fallback from actual variants
-  for (const k of propNames) {
+  for (const k of allPropNames) {
     if (!propertyValues[k]) {
       const vals = new Set<string>();
       for (const v of variants) {
         const val = (v.variantProperties ?? {})[k];
         if (val) vals.add(val);
       }
-      propertyValues[k] = Array.from(vals).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+  propertyValues[k] = sortPropertyValues(k, Array.from(vals));
     }
   }
 
   // Build quick lookup from full props -> ComponentNode
+  // Reorder properties to prioritize state-like property on columns so ordering is visible
+  const statePropName = allPropNames.find((n) => looksLikeStateProperty(n, propertyValues[n] || []));
+  let orderedNames: string[] = [...allPropNames];
+  if (statePropName) {
+    const others = allPropNames.filter((n) => n !== statePropName);
+    const rowCandidate = others.length > 0 ? [others[0]] : [];
+    const remaining = others.slice(1);
+    orderedNames = [...rowCandidate, statePropName, ...remaining];
+  }
+
   const lookup = new Map<string, ComponentNode>();
   for (const v of variants) {
     const vp = v.variantProperties ?? {};
-    lookup.set(keyFor(vp, propNames), v);
+    lookup.set(keyFor(vp, orderedNames), v);
   }
 
   await ensureFontLoaded();
@@ -142,9 +213,9 @@ async function organizeVariants(): Promise<void> {
   parentFrame.appendChild(title);
 
   // Decide axes
-  const rowProp = propNames[0];
-  const colProp = propNames[1];
-  const otherProps = propNames.slice(2);
+  const rowProp = orderedNames[0];
+  const colProp = orderedNames[1];
+  const otherProps = orderedNames.slice(2);
 
   // For grouping when >2 props: create groups for each distinct combination of remaining properties from actual variants
   type PropMap = { [k: string]: string };
@@ -308,12 +379,12 @@ async function organizeVariants(): Promise<void> {
         cell.cornerRadius = 4;
 
         const fullProps: { [k: string]: string } = {};
-        for (const n of propNames) {
+  for (const n of orderedNames) {
           if (n === rowProp) fullProps[n] = rv;
           else if (n === colProp) fullProps[n] = cv;
           else if (n in fixedProps) fullProps[n] = fixedProps[n];
         }
-        const comp = lookup.get(keyFor(fullProps, propNames));
+  const comp = lookup.get(keyFor(fullProps, orderedNames));
         if (comp) {
           const instance = comp.createInstance();
           cell.appendChild(instance);
@@ -351,5 +422,5 @@ async function organizeVariants(): Promise<void> {
   figma.currentPage.selection = [parentFrame];
   figma.viewport.scrollAndZoomIntoView([parentFrame]);
 
-  figma.notify(`Rendered ${variants.length} variants across ${propNames.length} properties.`);
+  figma.notify(`Rendered ${variants.length} variants across ${allPropNames.length} properties.`);
 }
