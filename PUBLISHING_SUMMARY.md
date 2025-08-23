@@ -58,6 +58,8 @@ Your Figma plugin "Variant Organizer" is now fully prepared for publishing to th
 - [x] Comprehensive feature descriptions
 - [x] Requirements clearly stated
 - [x] Examples and use cases provided
+- [x] API limitations clearly documented
+- [x] Workarounds for component properties explained
 
 ### Legal & Metadata ✅
 - [x] MIT License included
@@ -80,6 +82,19 @@ Your plugin offers:
 - **Dark Mode Support**: Context-aware styling
 - **State Ordering**: Smart sorting of common states
 - **Visual Grid**: Clear matrix layout for easy scanning
+
+## ⚠️ Important Notes for Users
+
+### API Limitations
+- **Component Properties**: The plugin cannot access boolean properties like "Has left icon?" or text properties set through Figma's component properties panel
+- **Appearance Mode**: Cannot change or detect Appearance mode settings in variables or components
+- **Variable Bindings**: Dynamic properties controlled by Figma variables are not accessible
+- **Best Practice**: Works best with variant properties rather than component properties
+
+### Recommended Workflow
+1. Use Figma's variant system instead of component properties for full compatibility
+2. Convert existing component properties to variant properties when possible
+3. Use clear naming conventions for optimal detection
 
 ## 💡 Marketing Tips
 

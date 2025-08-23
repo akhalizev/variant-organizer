@@ -52,6 +52,14 @@ Before publishing, ensure:
 - **Supported Platforms**: Figma, FigJam, Slides
 - **Permissions**: Document access (dynamic-page)
 - **Network Access**: None required
+- **API Limitations**: Component properties (boolean, text) are not accessible via Plugin API
+
+#### Important Limitations to Mention
+- **Component Properties**: The plugin cannot access boolean properties like "Has left icon?" or text properties set through Figma's component properties panel
+- **Appearance Mode**: Cannot change or detect Appearance mode settings in variables or components
+- **Variable Bindings**: Dynamic properties controlled by Figma variables are not accessible
+- **Workarounds Available**: Users can convert component properties to variant properties or use naming conventions
+- **Best Practice**: Recommend using variant properties instead of component properties for full compatibility
 
 ### 5. Review Process
 
@@ -74,6 +82,8 @@ Figma will review your plugin for:
 - [ ] Usage instructions
 - [ ] Screenshots and examples
 - [ ] Requirements clearly stated
+- [ ] API limitations clearly documented
+- [ ] Workarounds for component properties explained
 
 ### Testing
 - [ ] Works with different component types

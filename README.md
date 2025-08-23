@@ -24,6 +24,26 @@ A powerful Figma plugin that automatically organizes component variants into str
 - Component Set with multiple variants
 - Variants should have consistent property structures
 
+## ⚠️ Important Limitations
+
+Due to Figma Plugin API restrictions, this plugin can only access:
+- **Variant Properties**: Properties defined in the component set's variant system
+- **Component Names**: Used for pattern detection and organization
+- **Component Structure**: Child elements and their names
+
+**Not Supported:**
+- **Component Properties**: Boolean properties like "Has left icon?" or text properties set through Figma's component properties panel are not accessible through the Plugin API
+- **Instance Properties**: Properties set on individual component instances
+- **Appearance Mode**: The plugin cannot change or detect Appearance mode settings in variables or components
+- **Variable Bindings**: Dynamic properties controlled by Figma variables are not accessible
+
+### Workarounds for Component Properties
+
+If your components use boolean properties (like "Has left icon?"), consider these alternatives:
+1. **Convert to Variant Properties**: Create variants like "With Icon" and "Without Icon"
+2. **Use Naming Conventions**: Include property information in component names (e.g., "Button Primary With Icon")
+3. **Structure-Based Detection**: Name child elements clearly (e.g., "left-icon", "right-icon") for automatic detection
+
 ## 🎯 Perfect For
 
 - **Design Systems**: Organize button, input, and component variants
@@ -62,10 +82,12 @@ The plugin creates a structured frame containing:
 
 ## 💡 Tips for Best Results
 
-1. **Consistent Naming**: Use consistent property names across your variants
-2. **Complete Sets**: Ensure all logical variant combinations exist
-3. **Clear Properties**: Use descriptive property names (e.g., "size" instead of "s")
-4. **State Ordering**: The plugin automatically orders common states (default → hover → focus → disabled)
+1. **Use Variant Properties**: For best results, use Figma's variant system instead of component properties
+2. **Consistent Naming**: Use consistent property names across your variants
+3. **Complete Sets**: Ensure all logical variant combinations exist
+4. **Clear Properties**: Use descriptive property names (e.g., "size" instead of "s")
+5. **State Ordering**: The plugin automatically orders common states (default → hover → focus → disabled)
+6. **Icon Detection**: If using icons, include "icon", "left", or "right" in child element names for automatic detection
 
 ## 🛠️ Development
 

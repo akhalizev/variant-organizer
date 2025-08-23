@@ -167,13 +167,61 @@ async function organizeVariants(): Promise<void> {
     return;
   }
 
-  // Collect property names and values
+  // Collect property names and values from both variant properties and component properties
   const nameSet = new Set<string>();
   let maxVariantWidth = 0;
   let maxVariantHeight = 0;
+  
   for (const v of variants) {
+    // Collect variant properties
     const vp = v.variantProperties ?? {};
     Object.keys(vp).forEach((k) => nameSet.add(k));
+    
+    // Collect component properties (like boolean properties for icon visibility)
+    // Try to access component properties through the component's properties
+    try {
+      // Check if the component has any boolean properties or other component properties
+      // We'll look for properties in the component's children that might indicate icon presence
+      if (v.children) {
+        for (const child of v.children) {
+          // Look for icon-related elements or properties
+          if (child.name && (child.name.toLowerCase().indexOf('icon') !== -1 || 
+                            child.name.toLowerCase().indexOf('left') !== -1 || 
+                            child.name.toLowerCase().indexOf('right') !== -1)) {
+            nameSet.add('icon');
+            break;
+          }
+        }
+      }
+      
+      // Also check component name for icon-related keywords
+      if (v.name) {
+        const nameParts = v.name.toLowerCase().split(/[\s\-_]+/);
+        if (nameParts.indexOf('icon') !== -1 || nameParts.indexOf('withicon') !== -1 || nameParts.indexOf('noicon') !== -1) {
+          nameSet.add('icon');
+        }
+      }
+      
+      // Try to detect common component property patterns
+      // Look for boolean properties that might be set on the component
+      const componentName = v.name.toLowerCase();
+      if (componentName.indexOf('has') !== -1 || 
+          componentName.indexOf('with') !== -1 || 
+          componentName.indexOf('without') !== -1) {
+        // This might be a component with boolean properties
+        nameSet.add('properties');
+      }
+      
+    } catch (error) {
+      // If we can't access component properties, fall back to name-based detection
+      if (v.name) {
+        const nameParts = v.name.toLowerCase().split(/[\s\-_]+/);
+        if (nameParts.indexOf('icon') !== -1 || nameParts.indexOf('withicon') !== -1 || nameParts.indexOf('noicon') !== -1) {
+          nameSet.add('icon');
+        }
+      }
+    }
+    
     if (v.width > maxVariantWidth) maxVariantWidth = v.width;
     if (v.height > maxVariantHeight) maxVariantHeight = v.height;
   }
@@ -181,6 +229,7 @@ async function organizeVariants(): Promise<void> {
 
   // Map of property -> possible values (sorted)
   const propertyValues: { [k: string]: string[] } = {};
+  
   // Try using variantGroupProperties if available (shape can vary across typings)
   const vgp: any = (componentSet as any).variantGroupProperties;
   if (vgp && typeof vgp === 'object') {
@@ -188,18 +237,68 @@ async function organizeVariants(): Promise<void> {
       let values: string[] | undefined;
       if (Array.isArray(vgp[k])) values = vgp[k] as string[];
       else if (vgp[k] && Array.isArray(vgp[k].values)) values = vgp[k].values as string[];
-  if (values) propertyValues[k] = sortPropertyValues(k, [...values]);
+      if (values) propertyValues[k] = sortPropertyValues(k, [...values]);
     }
   }
+  
   // Fill missing or fallback from actual variants
   for (const k of allPropNames) {
     if (!propertyValues[k]) {
       const vals = new Set<string>();
       for (const v of variants) {
-        const val = (v.variantProperties ?? {})[k];
-        if (val) vals.add(val);
+        // Check variant properties first
+        const vp = v.variantProperties ?? {};
+        if (vp[k]) vals.add(vp[k]);
+        
+        // Check component properties (like boolean properties for icon visibility)
+        if (k === 'icon') {
+          // Try to detect icon presence from component structure and name
+          let hasIcon = false;
+          
+          try {
+            // Check if component has icon-related children
+            if (v.children) {
+              for (const child of v.children) {
+                if (child.name && (child.name.toLowerCase().indexOf('icon') !== -1 || 
+                                  child.name.toLowerCase().indexOf('left') !== -1 || 
+                                  child.name.toLowerCase().indexOf('right') !== -1)) {
+                  hasIcon = true;
+                  break;
+                }
+              }
+            }
+          } catch (error) {
+            // Fall back to name-based detection
+          }
+          
+          // Extract icon information from component name
+          const nameParts = v.name.toLowerCase().split(/[\s\-_]+/);
+          if (hasIcon || nameParts.indexOf('icon') !== -1 || nameParts.indexOf('withicon') !== -1) {
+            vals.add('visible');
+          } else if (nameParts.indexOf('noicon') !== -1 || nameParts.indexOf('withouticon') !== -1) {
+            vals.add('hidden');
+          } else {
+            // Default case - check if component has icon elements
+            vals.add('unknown');
+          }
+        }
+        
+        // Check for general component properties
+        if (k === 'properties') {
+          // Try to detect if this component has boolean properties
+          const componentName = v.name.toLowerCase();
+          if (componentName.indexOf('has') !== -1) {
+            vals.add('boolean');
+          } else if (componentName.indexOf('with') !== -1) {
+            vals.add('with');
+          } else if (componentName.indexOf('without') !== -1) {
+            vals.add('without');
+          } else {
+            vals.add('default');
+          }
+        }
       }
-  propertyValues[k] = sortPropertyValues(k, Array.from(vals));
+      propertyValues[k] = sortPropertyValues(k, Array.from(vals));
     }
   }
 
@@ -217,7 +316,59 @@ async function organizeVariants(): Promise<void> {
   const lookup = new Map<string, ComponentNode>();
   for (const v of variants) {
     const vp = v.variantProperties ?? {};
-    lookup.set(keyFor(vp, orderedNames), v);
+    
+    // Combine both variant and component properties
+    const combinedProps: { [k: string]: string } = { ...vp };
+    
+    // Add component properties, converting them to strings
+    for (const k of Object.keys(combinedProps)) {
+      if (k === 'icon') {
+        // Try to detect icon presence from component structure and name
+        let hasIcon = false;
+        
+        try {
+          // Check if component has icon-related children
+          if (v.children) {
+            for (const child of v.children) {
+              if (child.name && (child.name.toLowerCase().indexOf('icon') !== -1 || 
+                                child.name.toLowerCase().indexOf('left') !== -1 || 
+                                child.name.toLowerCase().indexOf('right') !== -1)) {
+                hasIcon = true;
+                break;
+              }
+            }
+          }
+        } catch (error) {
+          // Fall back to name-based detection
+        }
+        
+        // Extract icon information from component name
+        const nameParts = v.name.toLowerCase().split(/[\s\-_]+/);
+        if (hasIcon || nameParts.indexOf('icon') !== -1 || nameParts.indexOf('withicon') !== -1) {
+          combinedProps[k] = 'visible';
+        } else if (nameParts.indexOf('noicon') !== -1 || nameParts.indexOf('withouticon') !== -1) {
+          combinedProps[k] = 'hidden';
+        } else {
+          combinedProps[k] = 'unknown';
+        }
+      }
+      
+      if (k === 'properties') {
+        // Set the properties value based on component name
+        const componentName = v.name.toLowerCase();
+        if (componentName.indexOf('has') !== -1) {
+          combinedProps[k] = 'boolean';
+        } else if (componentName.indexOf('with') !== -1) {
+          combinedProps[k] = 'with';
+        } else if (componentName.indexOf('without') !== -1) {
+          combinedProps[k] = 'without';
+        } else {
+          combinedProps[k] = 'default';
+        }
+      }
+    }
+    
+    lookup.set(keyFor(combinedProps, orderedNames), v);
   }
 
   await ensureFontLoaded();
