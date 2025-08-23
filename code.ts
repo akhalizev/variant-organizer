@@ -210,6 +210,7 @@ async function organizeVariants(): Promise<void> {
   } catch {}
   title.fontSize = 14;
   title.characters = `${componentSet.name}`;
+  title.fills = [{ type: 'SOLID', color: { r: 0, g: 0, b: 0 } }];
   parentFrame.appendChild(title);
 
   // Decide axes
@@ -288,6 +289,8 @@ async function organizeVariants(): Promise<void> {
       label.characters = groupName;
       if (groupIsDark) {
         label.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
+      } else {
+        label.fills = [{ type: 'SOLID', color: { r: 0, g: 0, b: 0 } }];
       }
       groupFrame.appendChild(label);
     }
@@ -313,14 +316,26 @@ async function organizeVariants(): Promise<void> {
       cell.primaryAxisSizingMode = 'AUTO';
       cell.counterAxisSizingMode = 'FIXED';
       cell.resize(cellWidth, cell.height);
+      
+      // Set background for column header based on whether it's "on dark"
+      const colIsDark = isOnDarkString(cv);
+      if (colIsDark) {
+        cell.fills = [{ type: 'SOLID', color: { r: 0.15, g: 0.15, b: 0.18 } }];
+        cell.strokes = [{ type: 'SOLID', color: { r: 0.3, g: 0.3, b: 0.35 } }];
+        cell.strokeWeight = 1;
+        cell.cornerRadius = 4;
+      }
+      
       const t = figma.createText();
       try {
         t.fontName = { family: 'Inter', style: 'Medium' };
       } catch {}
       t.fontSize = 12;
       t.characters = colProp ? `${colProp}: ${cv}` : '';
-      if (groupIsDark || isOnDarkString(cv)) {
+      if (colIsDark) {
         t.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
+      } else {
+        t.fills = [{ type: 'SOLID', color: { r: 0, g: 0, b: 0 } }];
       }
       cell.appendChild(t);
       header.appendChild(cell);
@@ -341,14 +356,26 @@ async function organizeVariants(): Promise<void> {
       rowLabel.primaryAxisSizingMode = 'AUTO';
       rowLabel.counterAxisSizingMode = 'FIXED';
       rowLabel.resize(rowLabelWidth, rowLabel.height);
+      
+      // Set background for row label based on whether it's "on dark"
+      const rowIsDark = isOnDarkString(rv);
+      if (rowIsDark) {
+        rowLabel.fills = [{ type: 'SOLID', color: { r: 0.15, g: 0.15, b: 0.18 } }];
+        rowLabel.strokes = [{ type: 'SOLID', color: { r: 0.3, g: 0.3, b: 0.35 } }];
+        rowLabel.strokeWeight = 1;
+        rowLabel.cornerRadius = 4;
+      }
+      
       const t = figma.createText();
       try {
         t.fontName = { family: 'Inter', style: 'Medium' };
       } catch {}
       t.fontSize = 12;
       t.characters = rowProp ? `${rowProp}: ${rv}` : '';
-      if (groupIsDark || isOnDarkString(rv)) {
+      if (rowIsDark) {
         t.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
+      } else {
+        t.fills = [{ type: 'SOLID', color: { r: 0, g: 0, b: 0 } }];
       }
       rowLabel.appendChild(t);
       row.appendChild(rowLabel);
