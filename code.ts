@@ -26,7 +26,38 @@ async function ensureFontLoaded() {
 // Utility: detect if a string implies an "On dark" context
 function isOnDarkString(s?: string): boolean {
   if (!s) return false;
-  return /on\s*dark/i.test(s) || /^dark$/i.test(s.trim());
+  const normalized = s.trim().toLowerCase();
+  
+  // Check for exact matches and common dark mode patterns
+  if (normalized === 'dark') return true;
+  if (normalized === 'dark mode') return true;
+  if (normalized === 'darkmode') return true;
+  if (normalized === 'on dark') return true;
+  if (normalized === 'ondark') return true;
+  
+  // Check for variations with spaces, hyphens, underscores
+  if (/dark\s*mode/i.test(normalized)) return true;
+  if (/on\s*dark/i.test(normalized)) return true;
+  if (/dark\s*theme/i.test(normalized)) return true;
+  if (/dark\s*appearance/i.test(normalized)) return true;
+  
+  // Check for dark mode in different languages/contexts
+  if (/dark\s*variant/i.test(normalized)) return true;
+  if (/dark\s*style/i.test(normalized)) return true;
+  if (/dark\s*color/i.test(normalized)) return true;
+  if (/dark\s*background/i.test(normalized)) return true;
+  
+  // Check for specific dark mode indicators
+  if (/🌙|🌑|⚫|⬛/.test(s)) return true; // Dark mode emojis
+  
+  // Check if the string contains "dark" as a standalone word
+  if (normalized.includes('dark')) {
+    // Avoid false positives like "darken", "darkroom", "darkness"
+    const words = normalized.split(/[\s\-_]+/);
+    if (words.indexOf('dark') !== -1) return true;
+  }
+  
+  return false;
 }
 
 // Utility: detect if any property key or value in the map denotes an "On dark" context
@@ -275,7 +306,8 @@ async function organizeVariants(): Promise<void> {
     // Detect dark context for this group
     const groupIsDark = isOnDarkProps(fixedProps);
     if (groupIsDark) {
-      groupFrame.fills = [{ type: 'SOLID', color: { r: 0.09, g: 0.09, b: 0.11 } }]; // near-black background
+      groupFrame.fills = [{ type: 'SOLID', color: { r: 0.08, g: 0.08, b: 0.1 } }]; // Darker, more visible background
+      groupFrame.strokes = [{ type: 'SOLID', color: { r: 0.4, g: 0.4, b: 0.45 } }]; // Better contrast border
     } else {
       groupFrame.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
     }
@@ -321,8 +353,8 @@ async function organizeVariants(): Promise<void> {
       // Set background for column header based on whether it's "on dark"
       const colIsDark = isOnDarkString(cv);
       if (colIsDark) {
-        cell.fills = [{ type: 'SOLID', color: { r: 0.15, g: 0.15, b: 0.18 } }];
-        cell.strokes = [{ type: 'SOLID', color: { r: 0.3, g: 0.3, b: 0.35 } }];
+        cell.fills = [{ type: 'SOLID', color: { r: 0.12, g: 0.12, b: 0.14 } }]; // Darker, more visible background
+        cell.strokes = [{ type: 'SOLID', color: { r: 0.4, g: 0.4, b: 0.45 } }]; // Better contrast border
         cell.strokeWeight = 1;
         cell.cornerRadius = 4;
       }
@@ -361,8 +393,8 @@ async function organizeVariants(): Promise<void> {
       // Set background for row label based on whether it's "on dark"
       const rowIsDark = isOnDarkString(rv);
       if (rowIsDark) {
-        rowLabel.fills = [{ type: 'SOLID', color: { r: 0.15, g: 0.15, b: 0.18 } }];
-        rowLabel.strokes = [{ type: 'SOLID', color: { r: 0.3, g: 0.3, b: 0.35 } }];
+        rowLabel.fills = [{ type: 'SOLID', color: { r: 0.12, g: 0.12, b: 0.14 } }]; // Darker, more visible background
+        rowLabel.strokes = [{ type: 'SOLID', color: { r: 0.4, g: 0.4, b: 0.45 } }]; // Better contrast border
         rowLabel.strokeWeight = 1;
         rowLabel.cornerRadius = 4;
       }
@@ -398,8 +430,8 @@ async function organizeVariants(): Promise<void> {
         cell.strokeWeight = 1;
         cell.strokeAlign = 'INSIDE';
         if (groupIsDark || isOnDarkString(rv) || isOnDarkString(cv)) {
-          cell.strokes = [{ type: 'SOLID', color: { r: 0.3, g: 0.3, b: 0.35 } }];
-          cell.fills = [{ type: 'SOLID', color: { r: 0.15, g: 0.15, b: 0.18 } }];
+          cell.strokes = [{ type: 'SOLID', color: { r: 0.4, g: 0.4, b: 0.45 } }]; // Better contrast border
+          cell.fills = [{ type: 'SOLID', color: { r: 0.12, g: 0.12, b: 0.14 } }]; // Darker, more visible background
         } else {
           cell.strokes = [{ type: 'SOLID', color: { r: 0.95, g: 0.95, b: 0.95 } }];
           cell.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
@@ -422,7 +454,7 @@ async function organizeVariants(): Promise<void> {
           rect.resize(maxVariantWidth || 48, maxVariantHeight || 48);
           if (groupIsDark || isOnDarkString(rv) || isOnDarkString(cv)) {
             rect.fills = [];
-            rect.strokes = [{ type: 'SOLID', color: { r: 1, g: 0.6, b: 0.6 } }];
+            rect.strokes = [{ type: 'SOLID', color: { r: 1, g: 0.7, b: 0.7 } }]; // Better contrast on dark background
           } else {
             rect.fills = [];
             rect.strokes = [{ type: 'SOLID', color: { r: 1, g: 0.4, b: 0.4 } }];
