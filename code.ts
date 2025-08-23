@@ -299,14 +299,15 @@ async function organizeVariants(): Promise<void> {
     const header = figma.createFrame();
     header.layoutMode = 'HORIZONTAL';
     header.primaryAxisSizingMode = 'AUTO';
-    header.counterAxisSizingMode = 'AUTO';
+    header.counterAxisSizingMode = 'FIXED';
+    header.resize(header.width, 32); // Fixed height for header row
     header.itemSpacing = 8;
 
     const spacer = figma.createFrame();
     spacer.layoutMode = 'HORIZONTAL';
     spacer.primaryAxisSizingMode = 'AUTO';
     spacer.counterAxisSizingMode = 'FIXED';
-    spacer.resize(rowLabelWidth, spacer.height);
+    spacer.resize(rowLabelWidth, 32); // Fixed height to match header
     header.appendChild(spacer);
 
     const colValues = colProp ? propertyValues[colProp] : [''];
@@ -315,7 +316,7 @@ async function organizeVariants(): Promise<void> {
       cell.layoutMode = 'HORIZONTAL';
       cell.primaryAxisSizingMode = 'AUTO';
       cell.counterAxisSizingMode = 'FIXED';
-      cell.resize(cellWidth, cell.height);
+      cell.resize(cellWidth, 32); // Fixed height to match header
       
       // Set background for column header based on whether it's "on dark"
       const colIsDark = isOnDarkString(cv);

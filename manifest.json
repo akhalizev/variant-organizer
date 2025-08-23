@@ -1,5 +1,5 @@
 {
-  "name": "Variant organizer",
+  "name": "Variant Organizer",
   "id": "1494523792453080451",
   "api": "1.0.0",
   "main": "code.js",
@@ -16,5 +16,16 @@
     "allowedDomains": [
       "none"
     ]
-  }
+  },
+  "description": "Automatically organize component variants into structured, easy-to-read tables. Perfect for design systems and component libraries.",
+  "keywords": [
+    "variants",
+    "components",
+    "organization",
+    "design-system",
+    "component-library",
+    "table",
+    "grid",
+    "layout"
+  ]
 }
