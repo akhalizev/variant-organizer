@@ -207,9 +207,15 @@ async function organizeVariants(): Promise<void> {
       componentSet = selected.parent as ComponentSetNode;
     }
   } else if (selected.type === 'INSTANCE') {
-    const mainComponent = await selected.getMainComponentAsync();
-    if (mainComponent && mainComponent.parent && mainComponent.parent.type === 'COMPONENT_SET') {
-      componentSet = mainComponent.parent as ComponentSetNode;
+    try {
+      const mainComponent = await selected.getMainComponentAsync();
+      if (mainComponent && mainComponent.parent && mainComponent.parent.type === 'COMPONENT_SET') {
+        componentSet = mainComponent.parent as ComponentSetNode;
+      }
+    } catch (error) {
+      console.error('Error getting main component:', error);
+      figma.notify('Error accessing instance main component. Please try selecting the component set directly.');
+      return;
     }
   }
 
@@ -270,7 +276,8 @@ async function organizeVariants(): Promise<void> {
       }
       
     } catch (error) {
-      // If we can't access component properties, fall back to name-based detection
+      console.warn('Error accessing component children for:', v.name, error);
+      // Fall back to name-based detection
       if (v.name) {
         const nameParts = v.name.toLowerCase().split(/[\s\-_]+/);
         if (nameParts.indexOf('icon') !== -1 || nameParts.indexOf('withicon') !== -1 || nameParts.indexOf('noicon') !== -1) {
@@ -639,8 +646,21 @@ async function organizeVariants(): Promise<void> {
         }
   const comp = lookup.get(keyFor(fullProps, orderedNames));
         if (comp) {
-          const instance = comp.createInstance();
-          cell.appendChild(instance);
+          try {
+            const instance = comp.createInstance();
+            cell.appendChild(instance);
+          } catch (error) {
+            console.error('Error creating instance for component:', comp.name, error);
+            // Create a placeholder rectangle instead
+            const rect = figma.createRectangle();
+            rect.resize(maxVariantWidth || 48, maxVariantHeight || 48);
+            rect.fills = [{ type: 'SOLID', color: { r: 1, g: 0.8, b: 0.8 } }];
+            rect.strokeWeight = 1;
+            rect.strokes = [{ type: 'SOLID', color: { r: 1, g: 0.4, b: 0.4 } }];
+            rect.dashPattern = [4, 4];
+            rect.name = `Error: ${comp.name}`;
+            cell.appendChild(rect);
+          }
         } else {
           // Placeholder for missing combination
           const rect = figma.createRectangle();
@@ -710,11 +730,17 @@ async function createDarkModeVariants(collectionName: string, lightModeName: str
     return;
   }
 
-  console.log('Variant table structure:', {
-    name: variantTable.name,
-    childrenCount: variantTable.children.length,
-    children: variantTable.children.map(c => `${c.name} (${c.type})`)
-  });
+  try {
+    console.log('Variant table structure:', {
+      name: variantTable.name,
+      childrenCount: variantTable.children.length,
+      children: variantTable.children.map(c => `${c.name} (${c.type})`)
+    });
+  } catch (error) {
+    console.error('Error accessing variant table structure:', error);
+    figma.notify('Error accessing variant table structure. The table may be corrupted.');
+    return;
+  }
 
   // Get variable collections (async version for dynamic-page access)
   const collections = await figma.variables.getLocalVariableCollectionsAsync();
@@ -783,108 +809,116 @@ async function createDarkModeVariants(collectionName: string, lightModeName: str
   let processedCount = 0;
   let totalVariants = 0;
   
-  for (const child of variantTable.children) {
-    if (child.type === 'FRAME' && child.name !== variantTable.children[0].name) { // Skip the title
-      const groupFrame = child as FrameNode;
-      console.log(`Processing group: ${groupFrame.name}`);
-      
-      // Create dark mode group
-      const darkGroupFrame = figma.createFrame();
-      darkGroupFrame.name = groupFrame.name.replace(/ Variants$/, ` ${darkModeName} Variants`);
-      darkGroupFrame.layoutMode = 'VERTICAL';
-      darkGroupFrame.primaryAxisSizingMode = 'AUTO';
-      darkGroupFrame.counterAxisSizingMode = 'AUTO';
-      darkGroupFrame.itemSpacing = 8;
-      darkGroupFrame.paddingLeft = 12;
-      darkGroupFrame.paddingRight = 12;
-      darkGroupFrame.paddingTop = 12;
-      darkGroupFrame.paddingBottom = 12;
-      darkGroupFrame.strokeWeight = 1;
-      darkGroupFrame.strokeAlign = 'INSIDE';
-      darkGroupFrame.strokes = [{ type: 'SOLID', color: { r: 0.4, g: 0.4, b: 0.45 } }];
-      darkGroupFrame.cornerRadius = 6;
-      darkGroupFrame.fills = [{ type: 'SOLID', color: { r: 0.08, g: 0.08, b: 0.1 } }];
+  try {
+    for (const child of variantTable.children) {
+      if (child.type === 'FRAME' && child.name !== variantTable.children[0]?.name) { // Skip the title
+        const groupFrame = child as FrameNode;
+        console.log(`Processing group: ${groupFrame.name}`);
+        
+        // Create dark mode group
+        const darkGroupFrame = figma.createFrame();
+        darkGroupFrame.name = groupFrame.name.replace(/ Variants$/, ` ${darkModeName} Variants`);
+        darkGroupFrame.layoutMode = 'VERTICAL';
+        darkGroupFrame.primaryAxisSizingMode = 'AUTO';
+        darkGroupFrame.counterAxisSizingMode = 'AUTO';
+        darkGroupFrame.itemSpacing = 8;
+        darkGroupFrame.paddingLeft = 12;
+        darkGroupFrame.paddingRight = 12;
+        darkGroupFrame.paddingTop = 12;
+        darkGroupFrame.paddingBottom = 12;
+        darkGroupFrame.strokeWeight = 1;
+        darkGroupFrame.strokeAlign = 'INSIDE';
+        darkGroupFrame.strokes = [{ type: 'SOLID', color: { r: 0.4, g: 0.4, b: 0.45 } }];
+        darkGroupFrame.cornerRadius = 6;
+        darkGroupFrame.fills = [{ type: 'SOLID', color: { r: 0.08, g: 0.08, b: 0.1 } }];
 
-      // Add group label
-      const groupLabel = figma.createText();
-      await setTextFont(groupLabel, 'Inter', 'Bold', 16);
-      groupLabel.characters = darkGroupFrame.name;
-      groupLabel.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
-      darkGroupFrame.appendChild(groupLabel);
-      
-      // Process each row in the group
-      for (const rowChild of groupFrame.children) {
-        if (rowChild.type === 'FRAME' && rowChild.children.length > 0) {
-          const rowFrame = rowChild as FrameNode;
-          console.log(`Processing row: ${rowFrame.name}, children: ${rowFrame.children.length}`);
+        // Add group label
+        const groupLabel = figma.createText();
+        await setTextFont(groupLabel, 'Inter', 'Bold', 16);
+        groupLabel.characters = darkGroupFrame.name;
+        groupLabel.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
+        darkGroupFrame.appendChild(groupLabel);
+        
+        // Process each row in the group
+        try {
+          for (const rowChild of groupFrame.children) {
+            if (rowChild.type === 'FRAME' && rowChild.children.length > 0) {
+              const rowFrame = rowChild as FrameNode;
+              console.log(`Processing row: ${rowFrame.name}, children: ${rowFrame.children.length}`);
 
-          // Find the variant instance in this row - look for INSTANCE nodes or FRAME nodes with INSTANCE children
-          let variantInstance: SceneNode | null = null;
+              // Find the variant instance in this row - look for INSTANCE nodes or FRAME nodes with INSTANCE children
+              let variantInstance: SceneNode | null = null;
 
-          // First, look for direct INSTANCE nodes
-          const instanceNodes = rowFrame.children.filter(child => child.type === 'INSTANCE');
-          if (instanceNodes.length > 0) {
-            variantInstance = instanceNodes[0];
-            console.log(`Found direct instance: ${variantInstance.name}`);
-          } else {
-            // Look for FRAME nodes that contain instances
-            const frameNodes = rowFrame.children.filter(child => child.type === 'FRAME') as FrameNode[];
-            for (const frameNode of frameNodes) {
-              if (frameNode.children && frameNode.children.length > 0) {
-                const nestedInstances = frameNode.children.filter(child => child.type === 'INSTANCE');
-                if (nestedInstances.length > 0) {
-                  variantInstance = nestedInstances[0];
-                  console.log(`Found nested instance: ${variantInstance.name} in frame: ${frameNode.name}`);
-                  break;
+              // First, look for direct INSTANCE nodes
+              const instanceNodes = rowFrame.children.filter(child => child.type === 'INSTANCE');
+              if (instanceNodes.length > 0) {
+                variantInstance = instanceNodes[0];
+                console.log(`Found direct instance: ${variantInstance.name}`);
+              } else {
+                // Look for FRAME nodes that contain instances
+                const frameNodes = rowFrame.children.filter(child => child.type === 'FRAME') as FrameNode[];
+                for (const frameNode of frameNodes) {
+                  if (frameNode.children && frameNode.children.length > 0) {
+                    const nestedInstances = frameNode.children.filter(child => child.type === 'INSTANCE');
+                    if (nestedInstances.length > 0) {
+                      variantInstance = nestedInstances[0];
+                      console.log(`Found nested instance: ${variantInstance.name} in frame: ${frameNode.name}`);
+                      break;
+                    }
+                  }
                 }
+              }
+
+              if (variantInstance) {
+                totalVariants++;
+                console.log(`Processing variant: ${variantInstance.name} (${variantInstance.type})`);
+
+                // Create a duplicate with dark mode colors
+                const darkVariant = await createDarkModeDuplicate(variantInstance, variables, lightMode, darkMode);
+                if (darkVariant) {
+                  console.log(`Successfully created dark variant for: ${variantInstance.name}`);
+
+                  // Create a cell for the dark variant
+                  const darkCell = figma.createFrame();
+                  darkCell.layoutMode = 'HORIZONTAL';
+                  darkCell.primaryAxisSizingMode = 'AUTO';
+                  darkCell.counterAxisSizingMode = 'FIXED';
+                  darkCell.counterAxisAlignItems = 'CENTER';
+                  darkCell.primaryAxisAlignItems = 'CENTER';
+                  darkCell.paddingLeft = 8;
+                  darkCell.paddingRight = 8;
+                  darkCell.paddingTop = 8;
+                  darkCell.paddingBottom = 8;
+                  darkCell.itemSpacing = 0;
+                  darkCell.resize(variantInstance.width, variantInstance.height);
+                  darkCell.strokeWeight = 1;
+                  darkCell.strokeAlign = 'INSIDE';
+                  darkCell.strokes = [{ type: 'SOLID', color: { r: 0.4, g: 0.4, b: 0.45 } }];
+                  darkCell.fills = [{ type: 'SOLID', color: { r: 0.12, g: 0.12, b: 0.14 } }];
+                  darkCell.cornerRadius = 4;
+
+                  darkCell.appendChild(darkVariant);
+                  darkGroupFrame.appendChild(darkCell);
+                  processedCount++;
+                } else {
+                  console.log(`Failed to create dark variant for: ${variantInstance.name}`);
+                }
+              } else {
+                console.log(`No variant instance found in row: ${rowFrame.name}`);
               }
             }
           }
+        } catch (error) {
+          console.error('Error processing rows in group:', groupFrame.name, error);
+        }
 
-          if (variantInstance) {
-            totalVariants++;
-            console.log(`Processing variant: ${variantInstance.name} (${variantInstance.type})`);
-
-            // Create a duplicate with dark mode colors
-            const darkVariant = await createDarkModeDuplicate(variantInstance, variables, lightMode, darkMode);
-            if (darkVariant) {
-              console.log(`Successfully created dark variant for: ${variantInstance.name}`);
-
-              // Create a cell for the dark variant
-              const darkCell = figma.createFrame();
-              darkCell.layoutMode = 'HORIZONTAL';
-              darkCell.primaryAxisSizingMode = 'AUTO';
-              darkCell.counterAxisSizingMode = 'FIXED';
-              darkCell.counterAxisAlignItems = 'CENTER';
-              darkCell.primaryAxisAlignItems = 'CENTER';
-              darkCell.paddingLeft = 8;
-              darkCell.paddingRight = 8;
-              darkCell.paddingTop = 8;
-              darkCell.paddingBottom = 8;
-              darkCell.itemSpacing = 0;
-              darkCell.resize(variantInstance.width, variantInstance.height);
-              darkCell.strokeWeight = 1;
-              darkCell.strokeAlign = 'INSIDE';
-              darkCell.strokes = [{ type: 'SOLID', color: { r: 0.4, g: 0.4, b: 0.45 } }];
-              darkCell.fills = [{ type: 'SOLID', color: { r: 0.12, g: 0.12, b: 0.14 } }];
-              darkCell.cornerRadius = 4;
-
-              darkCell.appendChild(darkVariant);
-              darkGroupFrame.appendChild(darkCell);
-              processedCount++;
-            } else {
-              console.log(`Failed to create dark variant for: ${variantInstance.name}`);
-            }
-          } else {
-            console.log(`No variant instance found in row: ${rowFrame.name}`);
-          }
+        if (darkGroupFrame.children.length > 1) { // Has more than just the label
+          darkModeSection.appendChild(darkGroupFrame);
         }
       }
-
-      if (darkGroupFrame.children.length > 1) { // Has more than just the label
-        darkModeSection.appendChild(darkGroupFrame);
-      }
     }
+  } catch (error) {
+    console.error('Error processing variant table children:', error);
   }
 
   console.log(`Total variants found: ${totalVariants}, Successfully processed: ${processedCount}`);
@@ -969,10 +1003,17 @@ async function createDarkModeDuplicate(
     // For instances, create a new instance
     if (originalNode.type === 'INSTANCE') {
       const instanceNode = originalNode as InstanceNode;
-      const newInstance = instanceNode.mainComponent?.createInstance();
-      if (newInstance) {
-        clone.appendChild(newInstance);
-        await replaceColorsWithDarkMode(newInstance, variables, lightMode, darkMode);
+      try {
+        const mainComponent = await instanceNode.getMainComponentAsync();
+        if (mainComponent) {
+          const newInstance = mainComponent.createInstance();
+          clone.appendChild(newInstance);
+          await replaceColorsWithDarkMode(newInstance, variables, lightMode, darkMode);
+        } else {
+          console.warn('Could not get main component for instance:', instanceNode.name);
+        }
+      } catch (error) {
+        console.error('Error getting main component for instance:', instanceNode.name, error);
       }
     } else {
       // For other nodes, recursively copy and modify
@@ -1013,8 +1054,14 @@ async function copyAndModifyNode(
     targetParent.appendChild(newFrame);
     
     // Process children
-    for (const child of sourceFrame.children) {
-      await copyAndModifyNode(child, newFrame, variables, lightMode, darkMode);
+    try {
+      if (sourceFrame.children) {
+        for (const child of sourceFrame.children) {
+          await copyAndModifyNode(child, newFrame, variables, lightMode, darkMode);
+        }
+      }
+    } catch (error) {
+      console.error('Error processing children of frame:', sourceFrame.name, error);
     }
     
     // Apply color changes to the frame itself
@@ -1022,10 +1069,17 @@ async function copyAndModifyNode(
     
   } else if (sourceNode.type === 'INSTANCE') {
     const sourceInstance = sourceNode as InstanceNode;
-    const newInstance = sourceInstance.mainComponent?.createInstance();
-    if (newInstance) {
-      targetParent.appendChild(newInstance);
-      await replaceColorsWithDarkMode(newInstance, variables, lightMode, darkMode);
+    try {
+      const mainComponent = await sourceInstance.getMainComponentAsync();
+      if (mainComponent) {
+        const newInstance = mainComponent.createInstance();
+        targetParent.appendChild(newInstance);
+        await replaceColorsWithDarkMode(newInstance, variables, lightMode, darkMode);
+      } else {
+        console.warn('Could not get main component for instance:', sourceInstance.name);
+      }
+    } catch (error) {
+      console.error('Error getting main component for instance:', sourceInstance.name, error);
     }
     
   } else if (sourceNode.type === 'RECTANGLE' || sourceNode.type === 'ELLIPSE' || sourceNode.type === 'POLYGON' || sourceNode.type === 'STAR') {
@@ -1142,10 +1196,14 @@ async function replaceColorsWithDarkMode(
   }
 
   // Recursively process children
-  if ('children' in node && node.children) {
-    for (const child of node.children) {
-      await replaceColorsWithDarkMode(child, variables, lightMode, darkMode);
+  try {
+    if ('children' in node && node.children) {
+      for (const child of node.children) {
+        await replaceColorsWithDarkMode(child, variables, lightMode, darkMode);
+      }
     }
+  } catch (error) {
+    console.error('Error processing children of node:', node.name, error);
   }
 }
 
