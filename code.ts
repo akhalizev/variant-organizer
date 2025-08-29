@@ -681,20 +681,27 @@ async function organizeVariants(): Promise<void> {
 async function createDarkModeVariants(collectionName: string, lightModeName: string, darkModeName: string): Promise<void> {
   // Ensure fonts are loaded before creating any text nodes
   await ensureFontLoaded();
+
   // Find the variant table frame
   const selection = figma.currentPage.selection;
   let variantTable: FrameNode | null = null;
 
+  console.log('Current selection:', selection.map(s => `${s.name} (${s.type})`));
+
   if (selection.length === 1 && selection[0].type === 'FRAME' && selection[0].name.includes('Variants Table')) {
     variantTable = selection[0] as FrameNode;
+    console.log('Using selected variant table:', variantTable.name);
   } else {
     // Try to find it on the current page
-    const frames = figma.currentPage.children.filter(node => 
+    const frames = figma.currentPage.children.filter(node =>
       node.type === 'FRAME' && node.name.includes('Variants Table')
     ) as FrameNode[];
-    
+
+    console.log('Found variant table frames:', frames.map(f => f.name));
+
     if (frames.length > 0) {
       variantTable = frames[frames.length - 1]; // Get the most recent one
+      console.log('Using most recent variant table:', variantTable.name);
     }
   }
 
@@ -702,6 +709,12 @@ async function createDarkModeVariants(collectionName: string, lightModeName: str
     figma.notify('Please select the variant table frame or ensure one exists.');
     return;
   }
+
+  console.log('Variant table structure:', {
+    name: variantTable.name,
+    childrenCount: variantTable.children.length,
+    children: variantTable.children.map(c => `${c.name} (${c.type})`)
+  });
 
   // Get variable collections (async version for dynamic-page access)
   const collections = await figma.variables.getLocalVariableCollectionsAsync();
@@ -803,20 +816,40 @@ async function createDarkModeVariants(collectionName: string, lightModeName: str
       for (const rowChild of groupFrame.children) {
         if (rowChild.type === 'FRAME' && rowChild.children.length > 0) {
           const rowFrame = rowChild as FrameNode;
-          
-          // Find the variant instance in this row
-          const variantInstance = rowFrame.children.find(child => 
-            child.type === 'INSTANCE' || (child.type === 'FRAME' && child.children.length > 0)
-          );
+          console.log(`Processing row: ${rowFrame.name}, children: ${rowFrame.children.length}`);
+
+          // Find the variant instance in this row - look for INSTANCE nodes or FRAME nodes with INSTANCE children
+          let variantInstance: SceneNode | null = null;
+
+          // First, look for direct INSTANCE nodes
+          const instanceNodes = rowFrame.children.filter(child => child.type === 'INSTANCE');
+          if (instanceNodes.length > 0) {
+            variantInstance = instanceNodes[0];
+            console.log(`Found direct instance: ${variantInstance.name}`);
+          } else {
+            // Look for FRAME nodes that contain instances
+            const frameNodes = rowFrame.children.filter(child => child.type === 'FRAME') as FrameNode[];
+            for (const frameNode of frameNodes) {
+              if (frameNode.children && frameNode.children.length > 0) {
+                const nestedInstances = frameNode.children.filter(child => child.type === 'INSTANCE');
+                if (nestedInstances.length > 0) {
+                  variantInstance = nestedInstances[0];
+                  console.log(`Found nested instance: ${variantInstance.name} in frame: ${frameNode.name}`);
+                  break;
+                }
+              }
+            }
+          }
 
           if (variantInstance) {
             totalVariants++;
-            console.log(`Found variant instance: ${variantInstance.name} (${variantInstance.type})`);
-            
+            console.log(`Processing variant: ${variantInstance.name} (${variantInstance.type})`);
+
             // Create a duplicate with dark mode colors
             const darkVariant = await createDarkModeDuplicate(variantInstance, variables, lightMode, darkMode);
             if (darkVariant) {
               console.log(`Successfully created dark variant for: ${variantInstance.name}`);
+
               // Create a cell for the dark variant
               const darkCell = figma.createFrame();
               darkCell.layoutMode = 'HORIZONTAL';
@@ -829,7 +862,7 @@ async function createDarkModeVariants(collectionName: string, lightModeName: str
               darkCell.paddingTop = 8;
               darkCell.paddingBottom = 8;
               darkCell.itemSpacing = 0;
-              darkCell.resize(darkCell.width, darkCell.height);
+              darkCell.resize(variantInstance.width, variantInstance.height);
               darkCell.strokeWeight = 1;
               darkCell.strokeAlign = 'INSIDE';
               darkCell.strokes = [{ type: 'SOLID', color: { r: 0.4, g: 0.4, b: 0.45 } }];
@@ -842,6 +875,8 @@ async function createDarkModeVariants(collectionName: string, lightModeName: str
             } else {
               console.log(`Failed to create dark variant for: ${variantInstance.name}`);
             }
+          } else {
+            console.log(`No variant instance found in row: ${rowFrame.name}`);
           }
         }
       }
@@ -853,6 +888,47 @@ async function createDarkModeVariants(collectionName: string, lightModeName: str
   }
 
   console.log(`Total variants found: ${totalVariants}, Successfully processed: ${processedCount}`);
+
+  // If no variants were processed, provide helpful feedback
+  if (processedCount === 0) {
+    console.warn('No dark mode variants were created. This could be due to:');
+    console.warn('1. No variant instances found in the table');
+    console.warn('2. No matching colors found in variables');
+    console.warn('3. Issues with variable collection or modes');
+
+    // Create a diagnostic frame to show what was found
+    const diagnosticFrame = figma.createFrame();
+    diagnosticFrame.name = 'Dark Mode Creation Diagnostics';
+    diagnosticFrame.layoutMode = 'VERTICAL';
+    diagnosticFrame.primaryAxisSizingMode = 'AUTO';
+    diagnosticFrame.counterAxisSizingMode = 'AUTO';
+    diagnosticFrame.itemSpacing = 8;
+    diagnosticFrame.paddingLeft = 12;
+    diagnosticFrame.paddingRight = 12;
+    diagnosticFrame.paddingTop = 12;
+    diagnosticFrame.paddingBottom = 12;
+    diagnosticFrame.strokeWeight = 1;
+    diagnosticFrame.strokeAlign = 'INSIDE';
+    diagnosticFrame.strokes = [{ type: 'SOLID', color: { r: 1, g: 0.7, b: 0.7 } }];
+    diagnosticFrame.fills = [{ type: 'SOLID', color: { r: 1, g: 0.95, b: 0.95 } }];
+    diagnosticFrame.cornerRadius = 6;
+
+    const diagnosticTitle = figma.createText();
+    await setTextFont(diagnosticTitle, 'Inter', 'Bold', 14);
+    diagnosticTitle.characters = '⚠️ Dark Mode Creation Issues';
+    diagnosticTitle.fills = [{ type: 'SOLID', color: { r: 0.8, g: 0, b: 0 } }];
+    diagnosticFrame.appendChild(diagnosticTitle);
+
+    const diagnosticText = figma.createText();
+    await setTextFont(diagnosticText, 'Inter', 'Regular', 12);
+    diagnosticText.characters = `Found ${totalVariants} variants but created ${processedCount} dark variants.\n\nCheck:\n• Variable collection: ${collection.name}\n• Light mode: ${lightMode.name}\n• Dark mode: ${darkMode.name}\n• Color variables: ${variables.filter(v => v.resolvedType === 'COLOR').length}\n\nOpen Figma DevTools (Ctrl+Shift+I) and check Console for detailed logs.`;
+    diagnosticText.fills = [{ type: 'SOLID', color: { r: 0.2, g: 0.2, b: 0.2 } }];
+    diagnosticFrame.appendChild(diagnosticText);
+
+    diagnosticFrame.x = variantTable.x + variantTable.width + 20;
+    diagnosticFrame.y = variantTable.y;
+    figma.currentPage.appendChild(diagnosticFrame);
+  }
 
   // Position the dark mode section below the original table
   darkModeSection.x = variantTable.x;
@@ -1081,26 +1157,27 @@ function findDarkModeColor(
   darkMode: VariableCollection['modes'][0]
 ): { color: { r: number; g: number; b: number }; opacity?: number } | null {
   console.log(`Looking for match for color: rgb(${Math.round(color.r * 255)}, ${Math.round(color.g * 255)}, ${Math.round(color.b * 255)})`);
-  
+
   // Find a variable that matches this color in light mode
   for (const variable of variables) {
     if (variable.resolvedType === 'COLOR') {
       const lightValue = variable.valuesByMode[lightMode.modeId];
       const darkValue = variable.valuesByMode[darkMode.modeId];
-      
+
       if (lightValue && typeof lightValue === 'object' && 'r' in lightValue &&
           darkValue && typeof darkValue === 'object' && 'r' in darkValue) {
-        
+
         // Check if colors match (with small tolerance for floating point)
         const tolerance = 0.01;
-        if (Math.abs(lightValue.r - color.r) < tolerance &&
-            Math.abs(lightValue.g - color.g) < tolerance &&
-            Math.abs(lightValue.b - color.b) < tolerance) {
-          
+        const colorMatch = Math.abs(lightValue.r - color.r) < tolerance &&
+                          Math.abs(lightValue.g - color.g) < tolerance &&
+                          Math.abs(lightValue.b - color.b) < tolerance;
+
+        if (colorMatch) {
           console.log(`Found match! Variable: ${variable.name}`);
           console.log(`Light mode: rgb(${Math.round(lightValue.r * 255)}, ${Math.round(lightValue.g * 255)}, ${Math.round(lightValue.b * 255)})`);
           console.log(`Dark mode: rgb(${Math.round(darkValue.r * 255)}, ${Math.round(darkValue.g * 255)}, ${Math.round(darkValue.b * 255)})`);
-          
+
           const result: { color: { r: number; g: number; b: number }; opacity?: number } = {
             color: {
               r: darkValue.r,
@@ -1108,20 +1185,20 @@ function findDarkModeColor(
               b: darkValue.b
             }
           };
-          
+
           // Handle alpha channel if present - convert to opacity
           if ('a' in darkValue && typeof darkValue.a === 'number') {
             result.opacity = darkValue.a;
           } else if (color.a !== undefined) {
             result.opacity = color.a;
           }
-          
+
           return result;
         }
       }
     }
   }
-  
+
   console.log('No matching variable found');
   return null; // No matching variable found
 }
