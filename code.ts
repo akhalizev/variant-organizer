@@ -19,15 +19,15 @@ function keyFor(props: { [k: string]: string | undefined }, names: string[]): st
 async function ensureFontLoaded() {
   try {
     await figma.loadFontAsync({ family: 'Inter', style: 'Medium' });
-  // Also try to load Bold for headers
-  await figma.loadFontAsync({ family: 'Inter', style: 'Bold' });
+    // Also try to load Bold for headers
+    await figma.loadFontAsync({ family: 'Inter', style: 'Bold' });
+    // Also try to load Regular for general text
+    await figma.loadFontAsync({ family: 'Inter', style: 'Regular' });
   } catch (_err) {
     // Fallback to default font if Inter isn't available
     // Intentionally swallow error so we still render frames
   }
-}
-
-// Utility: detect if a string implies an "On dark" context
+}// Utility: detect if a string implies an "On dark" context
 function isOnDarkString(s?: string): boolean {
   if (!s) return false;
   const normalized = s.trim().toLowerCase();
@@ -723,8 +723,11 @@ async function createDarkModeVariants(collectionName: string, lightModeName: str
   const sectionTitle = figma.createText();
   try {
     sectionTitle.fontName = { family: 'Inter', style: 'Bold' };
-  } catch {}
-  sectionTitle.fontSize = 16;
+    sectionTitle.fontSize = 16;
+  } catch (error) {
+    console.log('Font loading failed for section title, using defaults');
+    sectionTitle.fontSize = 16;
+  }
   sectionTitle.characters = `${darkModeName} Mode Variants`;
   sectionTitle.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
   darkModeSection.appendChild(sectionTitle);
@@ -759,8 +762,11 @@ async function createDarkModeVariants(collectionName: string, lightModeName: str
       const groupLabel = figma.createText();
       try {
         groupLabel.fontName = { family: 'Inter', style: 'Bold' };
-      } catch {}
-      groupLabel.fontSize = 16;
+        groupLabel.fontSize = 16;
+      } catch (error) {
+        console.log('Font loading failed for group label, using defaults');
+        groupLabel.fontSize = 16;
+      }
       groupLabel.characters = darkGroupFrame.name;
       groupLabel.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
       darkGroupFrame.appendChild(groupLabel);
@@ -945,14 +951,23 @@ async function copyAndModifyNode(
     const newText = figma.createText();
     newText.name = sourceText.name;
     newText.characters = sourceText.characters;
-    newText.fontSize = sourceText.fontSize;
-    newText.x = sourceText.x;
-    newText.y = sourceText.y;
     
-    // Try to set font
+    // Try to set font properties
     try {
       newText.fontName = sourceText.fontName;
-    } catch {}
+      newText.fontSize = sourceText.fontSize;
+      newText.textAlignHorizontal = sourceText.textAlignHorizontal;
+      newText.textAlignVertical = sourceText.textAlignVertical;
+      newText.letterSpacing = sourceText.letterSpacing;
+      newText.lineHeight = sourceText.lineHeight;
+    } catch (error) {
+      // If font loading fails, set basic properties
+      console.log('Font loading failed for text node, using defaults');
+      newText.fontSize = sourceText.fontSize || 12;
+    }
+    
+    newText.x = sourceText.x;
+    newText.y = sourceText.y;
     
     targetParent.appendChild(newText);
     await replaceColorsWithDarkMode(newText, variables, lightMode, darkMode);
