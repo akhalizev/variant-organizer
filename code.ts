@@ -17,6 +17,8 @@ function keyFor(props: { [k: string]: string | undefined }, names: string[]): st
 async function ensureFontLoaded() {
   try {
     await figma.loadFontAsync({ family: 'Inter', style: 'Medium' });
+  // Also try to load Bold for headers
+  await figma.loadFontAsync({ family: 'Inter', style: 'Bold' });
   } catch (_err) {
     // Fallback to default font if Inter isn't available
     // Intentionally swallow error so we still render frames
@@ -466,9 +468,9 @@ async function organizeVariants(): Promise<void> {
     if (groupName) {
       const label = figma.createText();
       try {
-        label.fontName = { family: 'Inter', style: 'Medium' };
+        label.fontName = { family: 'Inter', style: 'Bold' };
       } catch {}
-      label.fontSize = 12;
+      label.fontSize = 16;
       label.characters = groupName;
       if (groupIsDark) {
         label.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
@@ -483,14 +485,14 @@ async function organizeVariants(): Promise<void> {
     header.layoutMode = 'HORIZONTAL';
     header.primaryAxisSizingMode = 'AUTO';
     header.counterAxisSizingMode = 'FIXED';
-    header.resize(header.width, 32); // Fixed height for header row
+  header.resize(header.width, 32); // Fixed height for header row
     header.itemSpacing = 8;
 
     const spacer = figma.createFrame();
     spacer.layoutMode = 'HORIZONTAL';
     spacer.primaryAxisSizingMode = 'AUTO';
     spacer.counterAxisSizingMode = 'FIXED';
-    spacer.resize(rowLabelWidth, 32); // Fixed height to match header
+  spacer.resize(rowLabelWidth, 32); // Fixed height to match header
     header.appendChild(spacer);
 
     const colValues = colProp ? propertyValues[colProp] : [''];
@@ -499,7 +501,7 @@ async function organizeVariants(): Promise<void> {
       cell.layoutMode = 'HORIZONTAL';
       cell.primaryAxisSizingMode = 'AUTO';
       cell.counterAxisSizingMode = 'FIXED';
-      cell.resize(cellWidth, 32); // Fixed height to match header
+  cell.resize(cellWidth, 32); // Fixed height to match header
       
       // Set background for column header based on whether it's "on dark"
       const colIsDark = isOnDarkString(cv);
