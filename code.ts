@@ -16,16 +16,69 @@ function keyFor(props: { [k: string]: string | undefined }, names: string[]): st
 }
 
 // Utility: safe font load
-async function ensureFontLoaded() {
+async function ensureFontLoaded(): Promise<void> {
+  const fontsToLoad = [
+    { family: 'Inter', style: 'Regular' },
+    { family: 'Inter', style: 'Medium' },
+    { family: 'Inter', style: 'Bold' }
+  ];
+
+  console.log('Starting font loading...');
+
+  for (const font of fontsToLoad) {
+    try {
+      console.log(`Loading font: ${font.family} ${font.style}`);
+      await figma.loadFontAsync(font);
+      console.log(`Successfully loaded: ${font.family} ${font.style}`);
+    } catch (error) {
+      console.error(`Failed to load font ${font.family} ${font.style}:`, error);
+      // Try alternative font names
+      const alternatives = [
+        { family: 'Inter', style: font.style },
+        { family: 'Inter-Regular', style: 'Regular' },
+        { family: 'Inter-Medium', style: 'Regular' },
+        { family: 'Inter-Bold', style: 'Regular' }
+      ];
+
+      let loaded = false;
+      for (const alt of alternatives) {
+        try {
+          await figma.loadFontAsync(alt);
+          console.log(`Loaded alternative font: ${alt.family} ${alt.style}`);
+          loaded = true;
+          break;
+        } catch (altError) {
+          // Continue trying alternatives
+        }
+      }
+
+      if (!loaded) {
+        console.warn(`Could not load any variant of ${font.family} ${font.style}, will use system default`);
+      }
+    }
+  }
+
+  console.log('Font loading completed');
+}
+
+// Utility: safely set font properties on a text node
+async function setTextFont(textNode: TextNode, fontFamily: string = 'Inter', fontStyle: string = 'Regular', fontSize: number = 12): Promise<void> {
   try {
-    await figma.loadFontAsync({ family: 'Inter', style: 'Medium' });
-    // Also try to load Bold for headers
-    await figma.loadFontAsync({ family: 'Inter', style: 'Bold' });
-    // Also try to load Regular for general text
-    await figma.loadFontAsync({ family: 'Inter', style: 'Regular' });
-  } catch (_err) {
-    // Fallback to default font if Inter isn't available
-    // Intentionally swallow error so we still render frames
+    // First ensure fonts are loaded
+    await ensureFontLoaded();
+
+    // Try to set the font
+    textNode.fontName = { family: fontFamily, style: fontStyle };
+    textNode.fontSize = fontSize;
+    console.log(`Successfully set font ${fontFamily} ${fontStyle} on text node`);
+  } catch (error) {
+    console.warn(`Failed to set font ${fontFamily} ${fontStyle}, using defaults:`, error);
+    // Try with system default
+    try {
+      textNode.fontSize = fontSize;
+    } catch (fallbackError) {
+      console.error('Failed to set even basic font properties:', fallbackError);
+    }
   }
 }// Utility: detect if a string implies an "On dark" context
 function isOnDarkString(s?: string): boolean {
@@ -391,10 +444,7 @@ async function organizeVariants(): Promise<void> {
 
   // Title
   const title = figma.createText();
-  try {
-    title.fontName = { family: 'Inter', style: 'Medium' };
-  } catch {}
-  title.fontSize = 14;
+  await setTextFont(title, 'Inter', 'Medium', 14);
   title.characters = `${componentSet.name}`;
   title.fills = [{ type: 'SOLID', color: { r: 0, g: 0, b: 0 } }];
   parentFrame.appendChild(title);
@@ -425,10 +475,7 @@ async function organizeVariants(): Promise<void> {
   let rowLabelWidth = 0;
   for (const rv of rowValues) {
     const t = figma.createText();
-    try {
-      t.fontName = { family: 'Inter', style: 'Medium' };
-    } catch {}
-    t.fontSize = 12;
+    await setTextFont(t, 'Inter', 'Medium', 12);
     t.characters = rowProp ? `${rowProp}: ${rv}` : '';
     rowLabelWidth = Math.max(rowLabelWidth, t.width);
     t.remove();
@@ -469,10 +516,7 @@ async function organizeVariants(): Promise<void> {
 
     if (groupName) {
       const label = figma.createText();
-      try {
-        label.fontName = { family: 'Inter', style: 'Bold' };
-      } catch {}
-      label.fontSize = 16;
+      await setTextFont(label, 'Inter', 'Bold', 16);
       label.characters = groupName;
       if (groupIsDark) {
         label.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
@@ -515,10 +559,7 @@ async function organizeVariants(): Promise<void> {
       }
       
       const t = figma.createText();
-      try {
-        t.fontName = { family: 'Inter', style: 'Medium' };
-      } catch {}
-      t.fontSize = 12;
+      await setTextFont(t, 'Inter', 'Medium', 12);
       t.characters = colProp ? `${colProp}: ${cv}` : '';
       if (colIsDark) {
         t.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
@@ -555,10 +596,7 @@ async function organizeVariants(): Promise<void> {
       }
       
       const t = figma.createText();
-      try {
-        t.fontName = { family: 'Inter', style: 'Medium' };
-      } catch {}
-      t.fontSize = 12;
+      await setTextFont(t, 'Inter', 'Medium', 12);
       t.characters = rowProp ? `${rowProp}: ${rv}` : '';
       if (rowIsDark) {
         t.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
@@ -641,6 +679,8 @@ async function organizeVariants(): Promise<void> {
 }
 
 async function createDarkModeVariants(collectionName: string, lightModeName: string, darkModeName: string): Promise<void> {
+  // Ensure fonts are loaded before creating any text nodes
+  await ensureFontLoaded();
   // Find the variant table frame
   const selection = figma.currentPage.selection;
   let variantTable: FrameNode | null = null;
@@ -721,13 +761,7 @@ async function createDarkModeVariants(collectionName: string, lightModeName: str
 
   // Add section title
   const sectionTitle = figma.createText();
-  try {
-    sectionTitle.fontName = { family: 'Inter', style: 'Bold' };
-    sectionTitle.fontSize = 16;
-  } catch (error) {
-    console.log('Font loading failed for section title, using defaults');
-    sectionTitle.fontSize = 16;
-  }
+  await setTextFont(sectionTitle, 'Inter', 'Bold', 16);
   sectionTitle.characters = `${darkModeName} Mode Variants`;
   sectionTitle.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
   darkModeSection.appendChild(sectionTitle);
@@ -760,13 +794,7 @@ async function createDarkModeVariants(collectionName: string, lightModeName: str
 
       // Add group label
       const groupLabel = figma.createText();
-      try {
-        groupLabel.fontName = { family: 'Inter', style: 'Bold' };
-        groupLabel.fontSize = 16;
-      } catch (error) {
-        console.log('Font loading failed for group label, using defaults');
-        groupLabel.fontSize = 16;
-      }
+      await setTextFont(groupLabel, 'Inter', 'Bold', 16);
       groupLabel.characters = darkGroupFrame.name;
       groupLabel.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
       darkGroupFrame.appendChild(groupLabel);
@@ -951,11 +979,27 @@ async function copyAndModifyNode(
     const newText = figma.createText();
     newText.name = sourceText.name;
     newText.characters = sourceText.characters;
-    
-    // Try to set font properties
+
+    // Try to set font properties safely
     try {
-      newText.fontName = sourceText.fontName;
-      newText.fontSize = sourceText.fontSize;
+      // Handle fontName which might be figma.mixed
+      const sourceFontName = sourceText.fontName;
+      const sourceFontSize = sourceText.fontSize;
+
+      let fontFamily = 'Inter';
+      let fontStyle = 'Regular';
+      let fontSize = 12;
+
+      if (sourceFontName !== figma.mixed && typeof sourceFontName === 'object' && 'family' in sourceFontName) {
+        fontFamily = sourceFontName.family;
+        fontStyle = 'style' in sourceFontName ? sourceFontName.style : 'Regular';
+      }
+
+      if (sourceFontSize !== figma.mixed && typeof sourceFontSize === 'number') {
+        fontSize = sourceFontSize;
+      }
+
+      await setTextFont(newText, fontFamily, fontStyle, fontSize);
       newText.textAlignHorizontal = sourceText.textAlignHorizontal;
       newText.textAlignVertical = sourceText.textAlignVertical;
       newText.letterSpacing = sourceText.letterSpacing;
@@ -963,12 +1007,12 @@ async function copyAndModifyNode(
     } catch (error) {
       // If font loading fails, set basic properties
       console.log('Font loading failed for text node, using defaults');
-      newText.fontSize = sourceText.fontSize || 12;
+      await setTextFont(newText, 'Inter', 'Regular', 12);
     }
-    
+
     newText.x = sourceText.x;
     newText.y = sourceText.y;
-    
+
     targetParent.appendChild(newText);
     await replaceColorsWithDarkMode(newText, variables, lightMode, darkMode);
   }
