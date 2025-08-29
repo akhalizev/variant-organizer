@@ -2,11 +2,11 @@
 figma.showUI(__html__, { width: 300, height: 150 });
 
 // Handle messages from the UI
-figma.ui.onmessage = async (msg: { type: string; darkModeName?: string }) => {
+figma.ui.onmessage = async (msg: { type: string; lightModeName?: string; darkModeName?: string }) => {
   if (msg.type === 'organize-variants') {
     await organizeVariants();
   } else if (msg.type === 'create-dark-mode') {
-    await createDarkModeVariants(msg.darkModeName || 'Dark');
+    await createDarkModeVariants(msg.lightModeName || 'VD', msg.darkModeName || 'Dark');
   }
 };
 
@@ -640,7 +640,7 @@ async function organizeVariants(): Promise<void> {
   figma.notify(`Rendered ${variants.length} variants across ${allPropNames.length} properties.`);
 }
 
-async function createDarkModeVariants(darkModeName: string): Promise<void> {
+async function createDarkModeVariants(lightModeName: string, darkModeName: string): Promise<void> {
   // Find the variant table frame
   const selection = figma.currentPage.selection;
   let variantTable: FrameNode | null = null;
@@ -673,16 +673,16 @@ async function createDarkModeVariants(darkModeName: string): Promise<void> {
   // For now, use the first collection. In a real implementation, you might want to let the user choose
   const collection = collections[0];
   
-  // Find light and dark modes
+  // Find light and dark modes using provided names
   const lightMode = collection.modes.find(mode => 
-    mode.name.toLowerCase().includes('light') || mode.name.toLowerCase() === 'default'
+    mode.name.toLowerCase() === lightModeName.toLowerCase()
   );
   const darkMode = collection.modes.find(mode => 
-    mode.name.toLowerCase().includes(darkModeName.toLowerCase())
+    mode.name.toLowerCase() === darkModeName.toLowerCase()
   );
 
   if (!lightMode || !darkMode) {
-    figma.notify(`Could not find Light and ${darkModeName} modes in collection "${collection.name}".`);
+    figma.notify(`Could not find "${lightModeName}" and "${darkModeName}" modes in collection "${collection.name}". Available modes: ${collection.modes.map(m => m.name).join(', ')}`);
     return;
   }
 

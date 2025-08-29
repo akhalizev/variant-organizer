@@ -30,9 +30,26 @@
       <body>
         <p>Select a Component or Instance in Figma, then click the button below to organize all variants of its Component Set into labeled frames.</p>
         <button id="organize">Organize Variants</button>
+        <div style="margin-top: 16px;">
+          <div style="margin-bottom: 8px;">
+            <label for="lightModeName" style="display: block; margin-bottom: 4px; font-size: 12px;">Light Mode Name:</label>
+            <input type="text" id="lightModeName" value="VD" style="width: 100%; padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px;">
+          </div>
+          <div style="margin-bottom: 8px;">
+            <label for="darkModeName" style="display: block; margin-bottom: 4px; font-size: 12px;">Dark Mode Name:</label>
+            <input type="text" id="darkModeName" value="Dark" style="width: 100%; padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px;">
+          </div>
+        </div>
+        <button id="createDarkMode" style="margin-top: 8px;">Create Dark Mode Variants</button>
         <script>
           document.getElementById('organize').onclick = () => {
             parent.postMessage({ pluginMessage: { type: 'organize-variants' } }, '*');
+          };
+          
+          document.getElementById('createDarkMode').onclick = () => {
+            const lightModeName = document.getElementById('lightModeName').value;
+            const darkModeName = document.getElementById('darkModeName').value;
+            parent.postMessage({ pluginMessage: { type: 'create-dark-mode', lightModeName, darkModeName } }, '*');
           };
         </script>
       </body>
