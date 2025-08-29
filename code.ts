@@ -2,9 +2,11 @@
 figma.showUI(__html__, { width: 300, height: 150 });
 
 // Handle messages from the UI
-figma.ui.onmessage = async (msg: { type: string }) => {
+figma.ui.onmessage = async (msg: { type: string; darkModeName?: string }) => {
   if (msg.type === 'organize-variants') {
     await organizeVariants();
+  } else if (msg.type === 'create-dark-mode') {
+    await createDarkModeVariants(msg.darkModeName || 'Dark');
   }
 };
 
@@ -636,4 +638,397 @@ async function organizeVariants(): Promise<void> {
   figma.viewport.scrollAndZoomIntoView([parentFrame]);
 
   figma.notify(`Rendered ${variants.length} variants across ${allPropNames.length} properties.`);
+}
+
+async function createDarkModeVariants(darkModeName: string): Promise<void> {
+  // Find the variant table frame
+  const selection = figma.currentPage.selection;
+  let variantTable: FrameNode | null = null;
+
+  if (selection.length === 1 && selection[0].type === 'FRAME' && selection[0].name.includes('Variants Table')) {
+    variantTable = selection[0] as FrameNode;
+  } else {
+    // Try to find it on the current page
+    const frames = figma.currentPage.children.filter(node => 
+      node.type === 'FRAME' && node.name.includes('Variants Table')
+    ) as FrameNode[];
+    
+    if (frames.length > 0) {
+      variantTable = frames[frames.length - 1]; // Get the most recent one
+    }
+  }
+
+  if (!variantTable) {
+    figma.notify('Please select the variant table frame or ensure one exists.');
+    return;
+  }
+
+  // Get variable collections (async version for dynamic-page access)
+  const collections = await figma.variables.getLocalVariableCollectionsAsync();
+  if (collections.length === 0) {
+    figma.notify('No variable collections found. Please create variables first.');
+    return;
+  }
+
+  // For now, use the first collection. In a real implementation, you might want to let the user choose
+  const collection = collections[0];
+  
+  // Find light and dark modes
+  const lightMode = collection.modes.find(mode => 
+    mode.name.toLowerCase().includes('light') || mode.name.toLowerCase() === 'default'
+  );
+  const darkMode = collection.modes.find(mode => 
+    mode.name.toLowerCase().includes(darkModeName.toLowerCase())
+  );
+
+  if (!lightMode || !darkMode) {
+    figma.notify(`Could not find Light and ${darkModeName} modes in collection "${collection.name}".`);
+    return;
+  }
+
+  // Get all variables in this collection (async version)
+  const allVariables = await figma.variables.getLocalVariablesAsync();
+  const variables = allVariables.filter(v => 
+    v.variableCollectionId === collection.id
+  );
+
+  // Create dark mode section
+  const darkModeSection = figma.createFrame();
+  darkModeSection.name = `${darkModeName} Mode Variants`;
+  darkModeSection.layoutMode = 'VERTICAL';
+  darkModeSection.primaryAxisSizingMode = 'AUTO';
+  darkModeSection.counterAxisSizingMode = 'AUTO';
+  darkModeSection.itemSpacing = 8;
+  darkModeSection.paddingLeft = 12;
+  darkModeSection.paddingRight = 12;
+  darkModeSection.paddingTop = 12;
+  darkModeSection.paddingBottom = 12;
+  darkModeSection.strokeWeight = 1;
+  darkModeSection.strokeAlign = 'INSIDE';
+  darkModeSection.strokes = [{ type: 'SOLID', color: { r: 0.4, g: 0.4, b: 0.45 } }];
+  darkModeSection.cornerRadius = 6;
+  darkModeSection.fills = [{ type: 'SOLID', color: { r: 0.08, g: 0.08, b: 0.1 } }];
+
+  // Add section title
+  const sectionTitle = figma.createText();
+  try {
+    sectionTitle.fontName = { family: 'Inter', style: 'Bold' };
+  } catch {}
+  sectionTitle.fontSize = 16;
+  sectionTitle.characters = `${darkModeName} Mode Variants`;
+  sectionTitle.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
+  darkModeSection.appendChild(sectionTitle);
+
+  // Process each group in the variant table
+  let processedCount = 0;
+  for (const child of variantTable.children) {
+    if (child.type === 'FRAME' && child.name !== variantTable.children[0].name) { // Skip the title
+      const groupFrame = child as FrameNode;
+      
+      // Create dark mode group
+      const darkGroupFrame = figma.createFrame();
+      darkGroupFrame.name = groupFrame.name.replace(/ Variants$/, ` ${darkModeName} Variants`);
+      darkGroupFrame.layoutMode = 'VERTICAL';
+      darkGroupFrame.primaryAxisSizingMode = 'AUTO';
+      darkGroupFrame.counterAxisSizingMode = 'AUTO';
+      darkGroupFrame.itemSpacing = 8;
+      darkGroupFrame.paddingLeft = 12;
+      darkGroupFrame.paddingRight = 12;
+      darkGroupFrame.paddingTop = 12;
+      darkGroupFrame.paddingBottom = 12;
+      darkGroupFrame.strokeWeight = 1;
+      darkGroupFrame.strokeAlign = 'INSIDE';
+      darkGroupFrame.strokes = [{ type: 'SOLID', color: { r: 0.4, g: 0.4, b: 0.45 } }];
+      darkGroupFrame.cornerRadius = 6;
+      darkGroupFrame.fills = [{ type: 'SOLID', color: { r: 0.08, g: 0.08, b: 0.1 } }];
+
+      // Add group label
+      const groupLabel = figma.createText();
+      try {
+        groupLabel.fontName = { family: 'Inter', style: 'Bold' };
+      } catch {}
+      groupLabel.fontSize = 16;
+      groupLabel.characters = darkGroupFrame.name;
+      groupLabel.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
+      darkGroupFrame.appendChild(groupLabel);
+
+      // Process each row in the group
+      for (const rowChild of groupFrame.children) {
+        if (rowChild.type === 'FRAME' && rowChild.children.length > 0) {
+          const rowFrame = rowChild as FrameNode;
+          
+          // Find the variant instance in this row
+          const variantInstance = rowFrame.children.find(child => 
+            child.type === 'INSTANCE' || (child.type === 'FRAME' && child.children.length > 0)
+          );
+
+          if (variantInstance) {
+            // Create a duplicate with dark mode colors
+            const darkVariant = await createDarkModeDuplicate(variantInstance, variables, lightMode, darkMode);
+            if (darkVariant) {
+              // Create a cell for the dark variant
+              const darkCell = figma.createFrame();
+              darkCell.layoutMode = 'HORIZONTAL';
+              darkCell.primaryAxisSizingMode = 'AUTO';
+              darkCell.counterAxisSizingMode = 'FIXED';
+              darkCell.counterAxisAlignItems = 'CENTER';
+              darkCell.primaryAxisAlignItems = 'CENTER';
+              darkCell.paddingLeft = 8;
+              darkCell.paddingRight = 8;
+              darkCell.paddingTop = 8;
+              darkCell.paddingBottom = 8;
+              darkCell.itemSpacing = 0;
+              darkCell.resize(darkCell.width, darkCell.height);
+              darkCell.strokeWeight = 1;
+              darkCell.strokeAlign = 'INSIDE';
+              darkCell.strokes = [{ type: 'SOLID', color: { r: 0.4, g: 0.4, b: 0.45 } }];
+              darkCell.fills = [{ type: 'SOLID', color: { r: 0.12, g: 0.12, b: 0.14 } }];
+              darkCell.cornerRadius = 4;
+
+              darkCell.appendChild(darkVariant);
+              darkGroupFrame.appendChild(darkCell);
+              processedCount++;
+            }
+          }
+        }
+      }
+
+      if (darkGroupFrame.children.length > 1) { // Has more than just the label
+        darkModeSection.appendChild(darkGroupFrame);
+      }
+    }
+  }
+
+  // Position the dark mode section below the original table
+  darkModeSection.x = variantTable.x;
+  darkModeSection.y = variantTable.y + variantTable.height + 40;
+
+  // Add to page and select
+  figma.currentPage.appendChild(darkModeSection);
+  figma.currentPage.selection = [darkModeSection];
+  figma.viewport.scrollAndZoomIntoView([darkModeSection]);
+
+  figma.notify(`Created ${processedCount} dark mode variants.`);
+}
+
+// Utility function to create a dark mode duplicate of a variant
+async function createDarkModeDuplicate(
+  originalNode: SceneNode, 
+  variables: Variable[], 
+  lightMode: VariableCollection['modes'][0], 
+  darkMode: VariableCollection['modes'][0]
+): Promise<SceneNode | null> {
+  try {
+    // Clone the node using Figma's clone method
+    const clone = figma.createFrame();
+    clone.name = originalNode.name;
+    clone.resize(originalNode.width, originalNode.height);
+    
+    // Copy basic properties
+    if ('layoutMode' in originalNode) {
+      clone.layoutMode = originalNode.layoutMode;
+    }
+    if ('primaryAxisSizingMode' in originalNode) {
+      clone.primaryAxisSizingMode = originalNode.primaryAxisSizingMode;
+    }
+    if ('counterAxisSizingMode' in originalNode) {
+      clone.counterAxisSizingMode = originalNode.counterAxisSizingMode;
+    }
+    
+    // For instances, create a new instance
+    if (originalNode.type === 'INSTANCE') {
+      const instanceNode = originalNode as InstanceNode;
+      const newInstance = instanceNode.mainComponent?.createInstance();
+      if (newInstance) {
+        clone.appendChild(newInstance);
+        await replaceColorsWithDarkMode(newInstance, variables, lightMode, darkMode);
+      }
+    } else {
+      // For other nodes, recursively copy and modify
+      await copyAndModifyNode(originalNode, clone, variables, lightMode, darkMode);
+    }
+    
+    return clone;
+  } catch (error) {
+    console.error('Error creating dark mode duplicate:', error);
+    return null;
+  }
+}
+
+// Utility function to recursively copy and modify a node
+async function copyAndModifyNode(
+  sourceNode: SceneNode,
+  targetParent: FrameNode,
+  variables: Variable[],
+  lightMode: VariableCollection['modes'][0],
+  darkMode: VariableCollection['modes'][0]
+): Promise<void> {
+  if (sourceNode.type === 'FRAME') {
+    const sourceFrame = sourceNode as FrameNode;
+    const newFrame = figma.createFrame();
+    newFrame.name = sourceFrame.name;
+    newFrame.resize(sourceFrame.width, sourceFrame.height);
+    
+    // Copy frame properties
+    newFrame.layoutMode = sourceFrame.layoutMode;
+    newFrame.primaryAxisSizingMode = sourceFrame.primaryAxisSizingMode;
+    newFrame.counterAxisSizingMode = sourceFrame.counterAxisSizingMode;
+    newFrame.itemSpacing = sourceFrame.itemSpacing || 0;
+    newFrame.paddingLeft = sourceFrame.paddingLeft || 0;
+    newFrame.paddingRight = sourceFrame.paddingRight || 0;
+    newFrame.paddingTop = sourceFrame.paddingTop || 0;
+    newFrame.paddingBottom = sourceFrame.paddingBottom || 0;
+    
+    targetParent.appendChild(newFrame);
+    
+    // Process children
+    for (const child of sourceFrame.children) {
+      await copyAndModifyNode(child, newFrame, variables, lightMode, darkMode);
+    }
+    
+    // Apply color changes to the frame itself
+    await replaceColorsWithDarkMode(newFrame, variables, lightMode, darkMode);
+    
+  } else if (sourceNode.type === 'INSTANCE') {
+    const sourceInstance = sourceNode as InstanceNode;
+    const newInstance = sourceInstance.mainComponent?.createInstance();
+    if (newInstance) {
+      targetParent.appendChild(newInstance);
+      await replaceColorsWithDarkMode(newInstance, variables, lightMode, darkMode);
+    }
+    
+  } else if (sourceNode.type === 'RECTANGLE' || sourceNode.type === 'ELLIPSE' || sourceNode.type === 'POLYGON' || sourceNode.type === 'STAR') {
+    const shape = sourceNode as any;
+    let newShape: any;
+    
+    if (sourceNode.type === 'RECTANGLE') {
+      newShape = figma.createRectangle();
+    } else if (sourceNode.type === 'ELLIPSE') {
+      newShape = figma.createEllipse();
+    } else if (sourceNode.type === 'POLYGON') {
+      newShape = figma.createPolygon();
+    } else {
+      newShape = figma.createStar();
+    }
+    
+    newShape.name = shape.name;
+    newShape.resize(shape.width, shape.height);
+    newShape.x = shape.x;
+    newShape.y = shape.y;
+    
+    targetParent.appendChild(newShape);
+    await replaceColorsWithDarkMode(newShape, variables, lightMode, darkMode);
+    
+  } else if (sourceNode.type === 'TEXT') {
+    const sourceText = sourceNode as TextNode;
+    const newText = figma.createText();
+    newText.name = sourceText.name;
+    newText.characters = sourceText.characters;
+    newText.fontSize = sourceText.fontSize;
+    newText.x = sourceText.x;
+    newText.y = sourceText.y;
+    
+    // Try to set font
+    try {
+      newText.fontName = sourceText.fontName;
+    } catch {}
+    
+    targetParent.appendChild(newText);
+    await replaceColorsWithDarkMode(newText, variables, lightMode, darkMode);
+  }
+}
+
+// Utility function to recursively replace colors with dark mode equivalents
+async function replaceColorsWithDarkMode(
+  node: SceneNode,
+  variables: Variable[],
+  lightMode: VariableCollection['modes'][0],
+  darkMode: VariableCollection['modes'][0]
+): Promise<void> {
+  // Check if node has fills
+  if ('fills' in node && node.fills && Array.isArray(node.fills)) {
+    const newFills = [...node.fills];
+    for (let i = 0; i < newFills.length; i++) {
+      const fill = newFills[i];
+      if (fill.type === 'SOLID' && fill.color) {
+        const darkColor = findDarkModeColor(fill.color, variables, lightMode, darkMode);
+        if (darkColor) {
+          newFills[i] = {
+            ...fill,
+            color: darkColor
+          };
+        }
+      }
+    }
+    node.fills = newFills;
+  }
+
+  // Check if node has strokes
+  if ('strokes' in node && node.strokes && Array.isArray(node.strokes)) {
+    const newStrokes = [...node.strokes];
+    for (let i = 0; i < newStrokes.length; i++) {
+      const stroke = newStrokes[i];
+      if (stroke.type === 'SOLID' && stroke.color) {
+        const darkColor = findDarkModeColor(stroke.color, variables, lightMode, darkMode);
+        if (darkColor) {
+          newStrokes[i] = {
+            ...stroke,
+            color: darkColor
+          };
+        }
+      }
+    }
+    node.strokes = newStrokes;
+  }
+
+  // Recursively process children
+  if ('children' in node && node.children) {
+    for (const child of node.children) {
+      await replaceColorsWithDarkMode(child, variables, lightMode, darkMode);
+    }
+  }
+}
+
+// Utility function to find the dark mode equivalent of a color
+function findDarkModeColor(
+  color: { r: number; g: number; b: number; a?: number },
+  variables: Variable[],
+  lightMode: VariableCollection['modes'][0],
+  darkMode: VariableCollection['modes'][0]
+): { r: number; g: number; b: number; a?: number } | null {
+  // Find a variable that matches this color in light mode
+  for (const variable of variables) {
+    if (variable.resolvedType === 'COLOR') {
+      const lightValue = variable.valuesByMode[lightMode.modeId];
+      const darkValue = variable.valuesByMode[darkMode.modeId];
+      
+      if (lightValue && typeof lightValue === 'object' && 'r' in lightValue &&
+          darkValue && typeof darkValue === 'object' && 'r' in darkValue) {
+        
+        // Check if colors match (with small tolerance for floating point)
+        const tolerance = 0.01;
+        if (Math.abs(lightValue.r - color.r) < tolerance &&
+            Math.abs(lightValue.g - color.g) < tolerance &&
+            Math.abs(lightValue.b - color.b) < tolerance) {
+          
+          const result: { r: number; g: number; b: number; a?: number } = {
+            r: darkValue.r,
+            g: darkValue.g,
+            b: darkValue.b
+          };
+          
+          // Handle alpha channel if present
+          if ('a' in darkValue && typeof darkValue.a === 'number') {
+            result.a = darkValue.a;
+          } else if (color.a !== undefined) {
+            result.a = color.a;
+          }
+          
+          return result;
+        }
+      }
+    }
+  }
+  
+  return null; // No matching variable found
 }
