@@ -987,11 +987,13 @@ async function replaceColorsWithDarkMode(
     for (let i = 0; i < newFills.length; i++) {
       const fill = newFills[i];
       if (fill.type === 'SOLID' && fill.color) {
-        const darkColor = findDarkModeColor(fill.color, variables, lightMode, darkMode);
-        if (darkColor) {
+        const darkColorResult = findDarkModeColor(fill.color, variables, lightMode, darkMode);
+        if (darkColorResult) {
+          const { color, opacity } = darkColorResult;
           newFills[i] = {
             ...fill,
-            color: darkColor
+            color: color,
+            opacity: opacity !== undefined ? opacity : fill.opacity
           };
         }
       }
@@ -1005,11 +1007,13 @@ async function replaceColorsWithDarkMode(
     for (let i = 0; i < newStrokes.length; i++) {
       const stroke = newStrokes[i];
       if (stroke.type === 'SOLID' && stroke.color) {
-        const darkColor = findDarkModeColor(stroke.color, variables, lightMode, darkMode);
-        if (darkColor) {
+        const darkColorResult = findDarkModeColor(stroke.color, variables, lightMode, darkMode);
+        if (darkColorResult) {
+          const { color, opacity } = darkColorResult;
           newStrokes[i] = {
             ...stroke,
-            color: darkColor
+            color: color,
+            opacity: opacity !== undefined ? opacity : stroke.opacity
           };
         }
       }
@@ -1031,7 +1035,7 @@ function findDarkModeColor(
   variables: Variable[],
   lightMode: VariableCollection['modes'][0],
   darkMode: VariableCollection['modes'][0]
-): { r: number; g: number; b: number; a?: number } | null {
+): { color: { r: number; g: number; b: number }; opacity?: number } | null {
   console.log(`Looking for match for color: rgb(${Math.round(color.r * 255)}, ${Math.round(color.g * 255)}, ${Math.round(color.b * 255)})`);
   
   // Find a variable that matches this color in light mode
@@ -1053,17 +1057,19 @@ function findDarkModeColor(
           console.log(`Light mode: rgb(${Math.round(lightValue.r * 255)}, ${Math.round(lightValue.g * 255)}, ${Math.round(lightValue.b * 255)})`);
           console.log(`Dark mode: rgb(${Math.round(darkValue.r * 255)}, ${Math.round(darkValue.g * 255)}, ${Math.round(darkValue.b * 255)})`);
           
-          const result: { r: number; g: number; b: number; a?: number } = {
-            r: darkValue.r,
-            g: darkValue.g,
-            b: darkValue.b
+          const result: { color: { r: number; g: number; b: number }; opacity?: number } = {
+            color: {
+              r: darkValue.r,
+              g: darkValue.g,
+              b: darkValue.b
+            }
           };
           
-          // Handle alpha channel if present
+          // Handle alpha channel if present - convert to opacity
           if ('a' in darkValue && typeof darkValue.a === 'number') {
-            result.a = darkValue.a;
+            result.opacity = darkValue.a;
           } else if (color.a !== undefined) {
-            result.a = color.a;
+            result.opacity = color.a;
           }
           
           return result;
