@@ -286,8 +286,12 @@ async function organizeVariants(): Promise<void> {
       }
     }
     
-    if (v.width > maxVariantWidth) maxVariantWidth = v.width;
-    if (v.height > maxVariantHeight) maxVariantHeight = v.height;
+    try {
+      if (v.width > maxVariantWidth) maxVariantWidth = v.width;
+      if (v.height > maxVariantHeight) maxVariantHeight = v.height;
+    } catch (error) {
+      console.error('Error accessing variant dimensions:', v.name, error);
+    }
   }
   const allPropNames = Array.from(nameSet);
 
@@ -481,11 +485,15 @@ async function organizeVariants(): Promise<void> {
   const rowValues = rowProp ? propertyValues[rowProp] : [''];
   let rowLabelWidth = 0;
   for (const rv of rowValues) {
-    const t = figma.createText();
-    await setTextFont(t, 'Inter', 'Medium', 12);
-    t.characters = rowProp ? `${rowProp}: ${rv}` : '';
-    rowLabelWidth = Math.max(rowLabelWidth, t.width);
-    t.remove();
+    try {
+      const t = figma.createText();
+      await setTextFont(t, 'Inter', 'Medium', 12);
+      t.characters = rowProp ? `${rowProp}: ${rv}` : '';
+      rowLabelWidth = Math.max(rowLabelWidth, t.width);
+      t.remove();
+    } catch (error) {
+      console.error('Error measuring text width:', error);
+    }
   }
   rowLabelWidth = Math.ceil(rowLabelWidth) + 8; // small padding
 
@@ -687,9 +695,23 @@ async function organizeVariants(): Promise<void> {
     parentFrame.appendChild(groupFrame);
   }
 
-  // Position the parent frame near selection
-  parentFrame.x = selected.x + (selected as any).width + 100;
-  parentFrame.y = (selected as any).y;
+  // Position the parent frame near selection (with error handling)
+  try {
+    if (selected && selected.x !== undefined && selected.y !== undefined && (selected as any).width !== undefined) {
+      parentFrame.x = selected.x + (selected as any).width + 100;
+      parentFrame.y = selected.y;
+    } else {
+      // Fallback positioning if selected node properties are unavailable
+      parentFrame.x = 100;
+      parentFrame.y = 100;
+      console.warn('Could not access selected node position, using fallback positioning');
+    }
+  } catch (error) {
+    console.error('Error accessing selected node position:', error);
+    // Fallback positioning
+    parentFrame.x = 100;
+    parentFrame.y = 100;
+  }
 
   // Select and zoom
   figma.currentPage.selection = [parentFrame];
@@ -890,7 +912,19 @@ async function createDarkModeVariants(collectionName: string, lightModeName: str
                   darkCell.paddingTop = 8;
                   darkCell.paddingBottom = 8;
                   darkCell.itemSpacing = 0;
-                  darkCell.resize(variantInstance.width, variantInstance.height);
+                  
+                  // Safely resize the cell with error handling
+                  try {
+                    if (variantInstance.width !== undefined && variantInstance.height !== undefined) {
+                      darkCell.resize(variantInstance.width, variantInstance.height);
+                    } else {
+                      darkCell.resize(48, 48); // Default fallback size
+                    }
+                  } catch (error) {
+                    console.error('Error resizing dark cell:', error);
+                    darkCell.resize(48, 48); // Default fallback size
+                  }
+                  
                   darkCell.strokeWeight = 1;
                   darkCell.strokeAlign = 'INSIDE';
                   darkCell.strokes = [{ type: 'SOLID', color: { r: 0.4, g: 0.4, b: 0.45 } }];
@@ -959,14 +993,37 @@ async function createDarkModeVariants(collectionName: string, lightModeName: str
     diagnosticText.fills = [{ type: 'SOLID', color: { r: 0.2, g: 0.2, b: 0.2 } }];
     diagnosticFrame.appendChild(diagnosticText);
 
-    diagnosticFrame.x = variantTable.x + variantTable.width + 20;
-    diagnosticFrame.y = variantTable.y;
+    // Position diagnostic frame safely
+    try {
+      if (variantTable.x !== undefined && variantTable.y !== undefined && variantTable.width !== undefined) {
+        diagnosticFrame.x = variantTable.x + variantTable.width + 20;
+        diagnosticFrame.y = variantTable.y;
+      } else {
+        diagnosticFrame.x = 200;
+        diagnosticFrame.y = 200;
+      }
+    } catch (error) {
+      console.error('Error positioning diagnostic frame:', error);
+      diagnosticFrame.x = 200;
+      diagnosticFrame.y = 200;
+    }
     figma.currentPage.appendChild(diagnosticFrame);
   }
 
-  // Position the dark mode section below the original table
-  darkModeSection.x = variantTable.x;
-  darkModeSection.y = variantTable.y + variantTable.height + 40;
+  // Position the dark mode section below the original table (with error handling)
+  try {
+    if (variantTable.x !== undefined && variantTable.y !== undefined && variantTable.height !== undefined) {
+      darkModeSection.x = variantTable.x;
+      darkModeSection.y = variantTable.y + variantTable.height + 40;
+    } else {
+      darkModeSection.x = 100;
+      darkModeSection.y = 300;
+    }
+  } catch (error) {
+    console.error('Error positioning dark mode section:', error);
+    darkModeSection.x = 100;
+    darkModeSection.y = 300;
+  }
 
   // Add to page and select
   figma.currentPage.appendChild(darkModeSection);
