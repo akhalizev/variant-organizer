@@ -2,11 +2,11 @@
 figma.showUI(__html__, { width: 300, height: 150 });
 
 // Handle messages from the UI
-figma.ui.onmessage = async (msg: { type: string; lightModeName?: string; darkModeName?: string }) => {
+figma.ui.onmessage = async (msg: { type: string; collectionName?: string; lightModeName?: string; darkModeName?: string }) => {
   if (msg.type === 'organize-variants') {
     await organizeVariants();
   } else if (msg.type === 'create-dark-mode') {
-    await createDarkModeVariants(msg.lightModeName || 'VD', msg.darkModeName || 'Dark');
+    await createDarkModeVariants(msg.collectionName || 'General', msg.lightModeName || 'VD', msg.darkModeName || 'Dark');
   }
 };
 
@@ -640,7 +640,7 @@ async function organizeVariants(): Promise<void> {
   figma.notify(`Rendered ${variants.length} variants across ${allPropNames.length} properties.`);
 }
 
-async function createDarkModeVariants(lightModeName: string, darkModeName: string): Promise<void> {
+async function createDarkModeVariants(collectionName: string, lightModeName: string, darkModeName: string): Promise<void> {
   // Find the variant table frame
   const selection = figma.currentPage.selection;
   let variantTable: FrameNode | null = null;
@@ -670,10 +670,17 @@ async function createDarkModeVariants(lightModeName: string, darkModeName: strin
     return;
   }
 
-  // For now, use the first collection. In a real implementation, you might want to let the user choose
-  const collection = collections[0];
-  
-  // Find light and dark modes using provided names
+  // Find the specified collection
+  const collection = collections.find(col => col.name === collectionName);
+  if (!collection) {
+    const availableCollections = collections.map(col => col.name).join(', ');
+    figma.notify(`Collection "${collectionName}" not found. Available collections: ${availableCollections}`);
+    return;
+  }
+
+  console.log(`Using collection: ${collection.name}`);
+  console.log(`Available modes: ${collection.modes.map(m => m.name).join(', ')}`);
+  console.log(`Looking for light mode: "${lightModeName}", dark mode: "${darkModeName}"`);  // Find light and dark modes using provided names
   const lightMode = collection.modes.find(mode => 
     mode.name.toLowerCase() === lightModeName.toLowerCase()
   );
@@ -691,6 +698,9 @@ async function createDarkModeVariants(lightModeName: string, darkModeName: strin
   const variables = allVariables.filter(v => 
     v.variableCollectionId === collection.id
   );
+
+  console.log(`Found ${variables.length} variables in collection`);
+  console.log(`Color variables: ${variables.filter(v => v.resolvedType === 'COLOR').length}`);
 
   // Create dark mode section
   const darkModeSection = figma.createFrame();
@@ -721,9 +731,12 @@ async function createDarkModeVariants(lightModeName: string, darkModeName: strin
 
   // Process each group in the variant table
   let processedCount = 0;
+  let totalVariants = 0;
+  
   for (const child of variantTable.children) {
     if (child.type === 'FRAME' && child.name !== variantTable.children[0].name) { // Skip the title
       const groupFrame = child as FrameNode;
+      console.log(`Processing group: ${groupFrame.name}`);
       
       // Create dark mode group
       const darkGroupFrame = figma.createFrame();
@@ -751,7 +764,7 @@ async function createDarkModeVariants(lightModeName: string, darkModeName: strin
       groupLabel.characters = darkGroupFrame.name;
       groupLabel.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
       darkGroupFrame.appendChild(groupLabel);
-
+      
       // Process each row in the group
       for (const rowChild of groupFrame.children) {
         if (rowChild.type === 'FRAME' && rowChild.children.length > 0) {
@@ -763,9 +776,13 @@ async function createDarkModeVariants(lightModeName: string, darkModeName: strin
           );
 
           if (variantInstance) {
+            totalVariants++;
+            console.log(`Found variant instance: ${variantInstance.name} (${variantInstance.type})`);
+            
             // Create a duplicate with dark mode colors
             const darkVariant = await createDarkModeDuplicate(variantInstance, variables, lightMode, darkMode);
             if (darkVariant) {
+              console.log(`Successfully created dark variant for: ${variantInstance.name}`);
               // Create a cell for the dark variant
               const darkCell = figma.createFrame();
               darkCell.layoutMode = 'HORIZONTAL';
@@ -788,6 +805,8 @@ async function createDarkModeVariants(lightModeName: string, darkModeName: strin
               darkCell.appendChild(darkVariant);
               darkGroupFrame.appendChild(darkCell);
               processedCount++;
+            } else {
+              console.log(`Failed to create dark variant for: ${variantInstance.name}`);
             }
           }
         }
@@ -798,6 +817,8 @@ async function createDarkModeVariants(lightModeName: string, darkModeName: strin
       }
     }
   }
+
+  console.log(`Total variants found: ${totalVariants}, Successfully processed: ${processedCount}`);
 
   // Position the dark mode section below the original table
   darkModeSection.x = variantTable.x;
@@ -996,6 +1017,8 @@ function findDarkModeColor(
   lightMode: VariableCollection['modes'][0],
   darkMode: VariableCollection['modes'][0]
 ): { r: number; g: number; b: number; a?: number } | null {
+  console.log(`Looking for match for color: rgb(${Math.round(color.r * 255)}, ${Math.round(color.g * 255)}, ${Math.round(color.b * 255)})`);
+  
   // Find a variable that matches this color in light mode
   for (const variable of variables) {
     if (variable.resolvedType === 'COLOR') {
@@ -1010,6 +1033,10 @@ function findDarkModeColor(
         if (Math.abs(lightValue.r - color.r) < tolerance &&
             Math.abs(lightValue.g - color.g) < tolerance &&
             Math.abs(lightValue.b - color.b) < tolerance) {
+          
+          console.log(`Found match! Variable: ${variable.name}`);
+          console.log(`Light mode: rgb(${Math.round(lightValue.r * 255)}, ${Math.round(lightValue.g * 255)}, ${Math.round(lightValue.b * 255)})`);
+          console.log(`Dark mode: rgb(${Math.round(darkValue.r * 255)}, ${Math.round(darkValue.g * 255)}, ${Math.round(darkValue.b * 255)})`);
           
           const result: { r: number; g: number; b: number; a?: number } = {
             r: darkValue.r,
@@ -1030,5 +1057,6 @@ function findDarkModeColor(
     }
   }
   
+  console.log('No matching variable found');
   return null; // No matching variable found
 }

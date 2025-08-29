@@ -32,6 +32,10 @@
         <button id="organize">Organize Variants</button>
         <div style="margin-top: 16px;">
           <div style="margin-bottom: 8px;">
+            <label for="collectionName" style="display: block; margin-bottom: 4px; font-size: 12px;">Variable Collection:</label>
+            <input type="text" id="collectionName" value="General" style="width: 100%; padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px;">
+          </div>
+          <div style="margin-bottom: 8px;">
             <label for="lightModeName" style="display: block; margin-bottom: 4px; font-size: 12px;">Light Mode Name:</label>
             <input type="text" id="lightModeName" value="VD" style="width: 100%; padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px;">
           </div>
@@ -47,9 +51,10 @@
           };
           
           document.getElementById('createDarkMode').onclick = () => {
+            const collectionName = document.getElementById('collectionName').value;
             const lightModeName = document.getElementById('lightModeName').value;
             const darkModeName = document.getElementById('darkModeName').value;
-            parent.postMessage({ pluginMessage: { type: 'create-dark-mode', lightModeName, darkModeName } }, '*');
+            parent.postMessage({ pluginMessage: { type: 'create-dark-mode', collectionName, lightModeName, darkModeName } }, '*');
           };
         </script>
       </body>
