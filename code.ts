@@ -1,11 +1,19 @@
-// Show the UI
-figma.showUI(__html__, { width: 300, height: 150 });
+// Feature flags
+const ENABLE_DARK_MODE = false;
+
+// Show the UI (compact in publish, larger in dev)
+figma.showUI(__html__, { width: 320, height: ENABLE_DARK_MODE ? 360 : 170 });
 
 // Handle messages from the UI
 figma.ui.onmessage = async (msg: { type: string; collectionName?: string; lightModeName?: string; darkModeName?: string }) => {
   if (msg.type === 'organize-variants') {
     await organizeVariants();
   } else if (msg.type === 'create-dark-mode') {
+    if (!ENABLE_DARK_MODE) {
+      // Ignore in published builds; can enable locally for dev
+      figma.notify('Dark mode feature is disabled in this version.');
+      return;
+    }
     await createDarkModeVariants(msg.collectionName || 'General', msg.lightModeName || 'VD', msg.darkModeName || 'Dark');
   }
 };
@@ -517,7 +525,7 @@ async function organizeVariants(): Promise<void> {
     groupFrame.paddingBottom = 12;
     groupFrame.strokeWeight = 1;
     groupFrame.strokeAlign = 'INSIDE';
-    groupFrame.strokes = [{ type: 'SOLID', color: { r: 0.85, g: 0.85, b: 0.85 } }];
+  groupFrame.strokes = [{ type: 'SOLID', color: { r: 0.7, g: 0.7, b: 0.7 } }];
     groupFrame.cornerRadius = 6;
 
     // Detect dark context for this group
@@ -571,6 +579,11 @@ async function organizeVariants(): Promise<void> {
         cell.strokes = [{ type: 'SOLID', color: { r: 0.4, g: 0.4, b: 0.45 } }]; // Better contrast border
         cell.strokeWeight = 1;
         cell.cornerRadius = 4;
+      } else {
+        // Ensure header cells also have a visible divider in light mode
+        cell.strokes = [{ type: 'SOLID', color: { r: 0.8, g: 0.8, b: 0.8 } }];
+        cell.strokeWeight = 1;
+        cell.cornerRadius = 4;
       }
       
       const t = figma.createText();
@@ -608,6 +621,11 @@ async function organizeVariants(): Promise<void> {
         rowLabel.strokes = [{ type: 'SOLID', color: { r: 0.4, g: 0.4, b: 0.45 } }]; // Better contrast border
         rowLabel.strokeWeight = 1;
         rowLabel.cornerRadius = 4;
+      } else {
+        // Add a subtle border in light mode so row label separation is visible
+        rowLabel.strokes = [{ type: 'SOLID', color: { r: 0.8, g: 0.8, b: 0.8 } }];
+        rowLabel.strokeWeight = 1;
+        rowLabel.cornerRadius = 4;
       }
       
       const t = figma.createText();
@@ -641,7 +659,7 @@ async function organizeVariants(): Promise<void> {
           cell.strokes = [{ type: 'SOLID', color: { r: 0.4, g: 0.4, b: 0.45 } }]; // Better contrast border
           cell.fills = [{ type: 'SOLID', color: { r: 0.12, g: 0.12, b: 0.14 } }]; // Darker, more visible background
         } else {
-          cell.strokes = [{ type: 'SOLID', color: { r: 0.95, g: 0.95, b: 0.95 } }];
+          cell.strokes = [{ type: 'SOLID', color: { r: 0.8, g: 0.8, b: 0.8 } }];
           cell.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
         }
         cell.cornerRadius = 4;
@@ -670,9 +688,21 @@ async function organizeVariants(): Promise<void> {
             cell.appendChild(rect);
           }
         } else {
-          // Placeholder for missing combination
+          // Placeholder for missing combination: dashed stroke + centered label
+          const width = maxVariantWidth || 48;
+          const height = maxVariantHeight || 48;
+
+          // Container so we can overlay text over the stroked rectangle inside an auto-layout cell
+          const placeholder = figma.createFrame();
+          placeholder.layoutMode = 'NONE';
+          placeholder.resize(width, height);
+          placeholder.fills = [];
+          placeholder.strokes = [];
+          placeholder.name = 'Missing';
+
+          // Stroked rectangle (no fill)
           const rect = figma.createRectangle();
-          rect.resize(maxVariantWidth || 48, maxVariantHeight || 48);
+          rect.resize(width, height);
           if (groupIsDark || isOnDarkString(rv) || isOnDarkString(cv)) {
             rect.fills = [];
             rect.strokes = [{ type: 'SOLID', color: { r: 1, g: 0.7, b: 0.7 } }]; // Better contrast on dark background
@@ -683,7 +713,24 @@ async function organizeVariants(): Promise<void> {
           rect.strokeWeight = 1;
           rect.dashPattern = [4, 4];
           rect.name = 'Missing';
-          cell.appendChild(rect);
+          placeholder.appendChild(rect);
+
+          // Centered caption
+          const caption = figma.createText();
+          await setTextFont(caption, 'Inter', 'Medium', 11);
+          caption.characters = 'No variant';
+          caption.textAlignHorizontal = 'CENTER';
+          caption.textAlignVertical = 'CENTER';
+          caption.textAutoResize = 'NONE';
+          caption.resize(width, height);
+          if (groupIsDark || isOnDarkString(rv) || isOnDarkString(cv)) {
+            caption.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
+          } else {
+            caption.fills = [{ type: 'SOLID', color: { r: 0.4, g: 0.4, b: 0.4 } }];
+          }
+          placeholder.appendChild(caption);
+
+          cell.appendChild(placeholder);
         }
 
         row.appendChild(cell);
