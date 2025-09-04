@@ -1,7 +1,7 @@
 // Feature flags
 const ENABLE_DARK_MODE = false;
 
-// Show the UI (compact in publish, larger in dev)
+// Show the UI (compact if dark mode functionality disabled)
 figma.showUI(__html__, { width: 320, height: ENABLE_DARK_MODE ? 360 : 170 });
 
 // Handle messages from the UI
@@ -16,6 +16,9 @@ figma.ui.onmessage = async (msg: { type: string; collectionName?: string; lightM
     }
     await createDarkModeVariants(msg.collectionName || 'General', msg.lightModeName || 'VD', msg.darkModeName || 'Dark');
   }
+
+  // After the action is complete, close the plugin
+  figma.closePlugin();
 };
 
 // Utility: stable key from properties in a fixed order
