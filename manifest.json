@@ -6,9 +6,7 @@
   "capabilities": [],
   "documentAccess": "dynamic-page",
   "editorType": [
-    "figma",
-    "figjam",
-    "slides"
+    "figma"
   ],
   "ui": "ui.html",
   "networkAccess": {
