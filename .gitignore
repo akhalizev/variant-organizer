@@ -60,3 +60,6 @@ jspm_packages/
 
 # Figma plugin specific
 .figma/
+
+.gemini/
+gha-creds-*.json

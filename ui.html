@@ -17,12 +17,22 @@
             width: 100%;
             font-size: 14px;
           }
-          button:hover {
+          button:hover:not(:disabled) {
             background-color: #0d8bec;
+          }
+          button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
           }
           p {
             font-size: 14px;
             color: #333;
+            margin-bottom: 16px;
+          }
+          p.note {
+            font-size: 12px;
+            color: #666;
+            margin-top: 8px;
             margin-bottom: 16px;
           }
         </style>
@@ -30,7 +40,9 @@
       <body>
         <p>Select a Component or Instance in Figma, then click the button below to organize all variants of its Component Set into labeled frames.</p>
         <button id="organize">Organize Variants</button>
+        <p id="loadingMessage" class="note" style="display: none;">Please note: This process may take some time, depending on the number of variants and your system's performance.</p>
         <!-- Dark mode feature (hidden by default; enable via ENABLE_DARK_MODE flag in script) -->
+        <!--
         <div id="darkFeature" style="margin-top: 16px;">
           <div style="margin-bottom: 8px;">
             <label for="collectionName" style="display: block; margin-bottom: 4px; font-size: 12px;">Variable Collection:</label>
@@ -46,11 +58,19 @@
           </div>
           <button id="createDarkMode" style="margin-top: 8px;">Create Dark Mode Variants</button>
         </div>
+        -->
         <script>
-          // Feature flag: keep dark mode functionality hidden for publish; set to true locally for dev
-          const ENABLE_DARK_MODE = false;
+          const organizeButton = document.getElementById('organize');
+          const darkModeButton = document.getElementById('createDarkMode');
 
-          document.getElementById('organize').onclick = () => {
+          organizeButton.onclick = () => {
+            const newHeight = 220;
+            parent.postMessage({ pluginMessage: { type: 'resize', width: 320, height: newHeight } }, '*');
+
+            organizeButton.textContent = 'Organizing...';
+            organizeButton.disabled = true;
+            if(darkModeButton) darkModeButton.disabled = true;
+            document.getElementById('loadingMessage').style.display = 'block';
             parent.postMessage({ pluginMessage: { type: 'organize-variants' } }, '*');
           };
 
@@ -59,9 +79,11 @@
           if (!ENABLE_DARK_MODE && darkFeatureEl) {
             darkFeatureEl.style.display = 'none';
           } else if (ENABLE_DARK_MODE) {
-            const btn = document.getElementById('createDarkMode');
-            if (btn) {
-              btn.onclick = () => {
+            if (darkModeButton) {
+              darkModeButton.onclick = () => {
+                darkModeButton.textContent = 'Creating...';
+                darkModeButton.disabled = true;
+                organizeButton.disabled = true;
                 const collectionName = document.getElementById('collectionName').value;
                 const lightModeName = document.getElementById('lightModeName').value;
                 const darkModeName = document.getElementById('darkModeName').value;

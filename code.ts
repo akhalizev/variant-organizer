@@ -5,19 +5,24 @@ const ENABLE_DARK_MODE = false;
 figma.showUI(__html__, { width: 320, height: ENABLE_DARK_MODE ? 360 : 170 });
 
 // Handle messages from the UI
-figma.ui.onmessage = async (msg: { type: string; collectionName?: string; lightModeName?: string; darkModeName?: string }) => {
+figma.ui.onmessage = async (msg: { type: string; collectionName?: string; lightModeName?: string; darkModeName?: string; width?: number; height?: number }) => {
+  if (msg.type === 'resize' && msg.width && msg.height) {
+    figma.ui.resize(msg.width, msg.height);
+    return; // Don't close plugin after resize
+  }
+
   if (msg.type === 'organize-variants') {
     await organizeVariants();
   } else if (msg.type === 'create-dark-mode') {
     if (!ENABLE_DARK_MODE) {
-      // Ignore in published builds; can enable locally for dev
       figma.notify('Dark mode feature is disabled in this version.');
-      return;
+    } else {
+      await createDarkModeVariants(msg.collectionName || 'General', msg.lightModeName || 'VD', msg.darkModeName || 'Dark');
     }
-    await createDarkModeVariants(msg.collectionName || 'General', msg.lightModeName || 'VD', msg.darkModeName || 'Dark');
   }
 
-  // After the action is complete, close the plugin
+  // After the action is complete, close the plugin.
+  // This will not be reached by the 'resize' message because of the return.
   figma.closePlugin();
 };
 
